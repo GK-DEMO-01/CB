@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RPChat - AI Role Playing Chatbot</title>
+<style>
+  :root {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-tertiary: #252540;
+    --accent: #7c5cff;
+    --accent-hover: #9a7fff;
+    --accent-dim: rgba(124, 92, 255, 0.15);
+    --text-primary: #e8e8f0;
+    --text-secondary: #a0a0b8;
+    --text-muted: #6a6a80;
+    --border: #2e2e48;
+    --user-bubble: #2a2a50;
+    --ai-bubble: #1e1e38;
+    --danger: #ff4466;
+    --success: #44cc88;
+    --warning: #ffaa33;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .app { display: flex; height: 100vh; }
+
+  /* ─── Sidebar ─── */
+  .sidebar {
+    width: 320px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: transform 0.3s;
+  }
+  .sidebar.collapsed { transform: translateX(-320px); position: absolute; z-index: 100; height: 100%; }
+
+  .sidebar-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sidebar-header h2 { font-size: 18px; font-weight: 600; color: var(--accent); }
+
+  .sidebar-header-actions { display: flex; gap: 6px; align-items: center; }
+
+  .settings-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .settings-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+
+  .sidebar-content { flex: 1; overflow-y: auto; padding: 16px; }
+
+  .sidebar-section { margin-bottom: 20px; }
+  .sidebar-section h3 {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 10px;
+  }
+
+  /* ─── Character Cards ─── */
+  .char-card {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; margin-bottom: 8px;
+    cursor: pointer; transition: all 0.2s; position: relative;
+  }
+  .char-card:hover { border-color: var(--accent); background: var(--accent-dim); }
+  .char-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+  .char-card-top { display: flex; align-items: center; gap: 10px; }
+
+  .char-avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0; overflow: hidden;
+  }
+  .char-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  .char-info h4 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .char-info p {
+    font-size: 12px; color: var(--text-secondary); line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  .char-actions {
+    position: absolute; top: 10px; right: 10px;
+    display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s;
+  }
+  .char-card:hover .char-actions { opacity: 1; }
+
+  .char-action-btn {
+    width: 26px; height: 26px; border-radius: 6px; border: none;
+    background: var(--bg-secondary); color: var(--text-secondary);
+    cursor: pointer; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .char-action-btn:hover { color: var(--text-primary); background: var(--border); }
+  .char-action-btn.delete:hover { color: var(--danger); }
+
+  /* ─── Chat History List ─── */
+  .chat-history { margin-top: 8px; }
+  .chat-history-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .chat-item {
+    padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; color: var(--text-secondary); transition: all 0.2s;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px; position: relative;
+  }
+  .chat-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .chat-item.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+  .chat-item-title {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chat-item-delete {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 12px; padding: 2px 4px; opacity: 0; transition: opacity 0.2s;
+  }
+  .chat-item:hover .chat-item-delete { opacity: 1; }
+  .chat-item-delete:hover { color: var(--danger); }
+
+  /* ─── Buttons ─── */
+  .btn {
+    padding: 10px 16px; border-radius: 8px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); }
+  .btn-danger { background: rgba(255, 68, 102, 0.15); color: var(--danger); }
+  .btn-danger:hover { background: rgba(255, 68, 102, 0.25); }
+  .btn-block { width: 100%; justify-content: center; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  /* ─── Main Chat ─── */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .chat-header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px; background: var(--bg-secondary);
+  }
+  .chat-header .toggle-sidebar {
+    background: none; border: none; color: var(--text-secondary);
+    font-size: 20px; cursor: pointer; padding: 4px;
+  }
+  .chat-header-info { flex: 1; }
+  .chat-header-info h3 { font-size: 16px; font-weight: 600; }
+  .chat-header-info p { font-size: 12px; color: var(--text-secondary); }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+  .model-select {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-primary); padding: 8px 12px; border-radius: 8px;
+    font-size: 13px; cursor: pointer; max-width: 220px;
+  }
+  .model-select:focus { outline: none; border-color: var(--accent); }
+
+  /* ─── Messages ─── */
+  .messages {
+    flex: 1; overflow-y: auto; padding: 24px; padding-right: 16px;
+    display: flex; flex-direction: column; gap: 16px;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124,92,255,0.4) rgba(255,255,255,0.05);
+  }
+  .messages::-webkit-scrollbar { width: 8px; }
+  .messages::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+  .messages::-webkit-scrollbar-thumb { background: rgba(124,92,255,0.4); border-radius: 4px; }
+  .messages::-webkit-scrollbar-thumb:hover { background: rgba(124,92,255,0.6); }
+  .message {
+    max-width: 75%; padding: 14px 18px; border-radius: 16px;
+    line-height: 1.6; font-size: 14px;
+    word-wrap: break-word; position: relative;
+  }
+  .message.new { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .message.user {
+    background: var(--user-bubble); align-self: flex-end; border-bottom-right-radius: 4px;
+  }
+  .message.assistant {
+    background: var(--ai-bubble); border: 1px solid var(--border);
+    align-self: flex-start; border-bottom-left-radius: 4px;
+  }
+  .message .sender {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.8px; margin-bottom: 6px; color: var(--accent);
+  }
+  .message.user .sender { color: var(--text-muted); }
+
+  /* ─── RP Formatting ─── */
+  .rp-action { color: #b0b0cc; font-style: italic; opacity: 0.85; }
+  .rp-bold { font-weight: 700; color: var(--text-primary); }
+  .rp-dialogue { color: var(--text-primary); font-weight: 400; font-style: normal; }
+  .rp-ooc { font-size: 12px; color: var(--text-muted); font-style: italic; }
+  .rp-instruction { color: rgba(124,92,255,0.7); font-size: 12px; font-style: italic; }
+
+  /* ─── Message Actions (edit) ─── */
+  .message-actions {
+    position: absolute; top: 8px; right: 8px;
+    display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s;
+  }
+  .message:hover .message-actions { opacity: 1; }
+  .msg-action-btn {
+    width: 24px; height: 24px; border-radius: 6px; border: none;
+    background: var(--bg-tertiary); color: var(--text-secondary);
+    cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .msg-action-btn:hover { color: var(--text-primary); background: var(--border); }
+
+  .edit-area textarea {
+    width: 100%; background: var(--bg-tertiary); border: 1px solid var(--accent);
+    color: var(--text-primary); padding: 10px; border-radius: 8px;
+    font-size: 14px; font-family: inherit; resize: vertical;
+    min-height: 60px; line-height: 1.5;
+  }
+  .edit-area textarea:focus { outline: none; }
+  .edit-actions { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
+
+  /* ─── Typing Indicator ─── */
+  .typing-indicator {
+    align-self: flex-start; padding: 14px 18px;
+    background: var(--ai-bubble); border: 1px solid var(--border);
+    border-radius: 16px; border-bottom-left-radius: 4px; display: none;
+  }
+  .typing-indicator.active { display: flex; gap: 4px; align-items: center; }
+  .typing-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-muted); animation: typingBounce 1.4s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-6px); opacity: 1; }
+  }
+
+  /* ─── Input Area ─── */
+  .input-area { padding: 16px 24px; border-top: 1px solid var(--border); background: var(--bg-secondary); }
+  .input-wrapper { display: flex; gap: 10px; align-items: flex-end; }
+  .input-wrapper textarea {
+    flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-primary); padding: 12px 16px; border-radius: 12px;
+    font-size: 14px; font-family: inherit; resize: none;
+    min-height: 46px; max-height: 150px; line-height: 1.5;
+  }
+  .input-wrapper textarea:focus { outline: none; border-color: var(--accent); }
+  .input-wrapper textarea::placeholder { color: var(--text-muted); }
+  .send-btn {
+    width: 46px; height: 46px; border-radius: 12px; border: none;
+    background: var(--accent); color: white; font-size: 18px;
+    cursor: pointer; flex-shrink: 0; transition: background 0.2s;
+  }
+  .send-btn:hover { background: var(--accent-hover); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ─── Welcome ─── */
+  .welcome {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; padding: 40px; gap: 16px;
+  }
+  .welcome h2 { font-size: 28px; color: var(--accent); }
+  .welcome p { color: var(--text-secondary); max-width: 500px; line-height: 1.6; }
+
+  /* ─── Modal ─── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px); display: none;
+    align-items: center; justify-content: center; z-index: 1000;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 16px; width: 520px; max-width: 92vw;
+    max-height: 88vh; overflow-y: auto; padding: 28px;
+    animation: modalIn 0.25s ease;
+  }
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .modal h3 { font-size: 18px; margin-bottom: 20px; color: var(--text-primary); }
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block; font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--text-secondary); margin-bottom: 6px;
+  }
+  .form-group input, .form-group textarea, .form-group select {
+    width: 100%; background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-primary); padding: 10px 14px; border-radius: 8px;
+    font-size: 14px; font-family: inherit;
+  }
+  .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+  .form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+
+  /* ─── Avatar Tabs ─── */
+  .avatar-tabs { display: flex; gap: 0; margin-bottom: 10px; }
+  .avatar-tab {
+    flex: 1; padding: 8px; text-align: center; font-size: 12px; font-weight: 600;
+    color: var(--text-muted); background: var(--bg-tertiary); border: 1px solid var(--border);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .avatar-tab:first-child { border-radius: 8px 0 0 8px; }
+  .avatar-tab:last-child { border-radius: 0 8px 8px 0; }
+  .avatar-tab.active { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
+  .avatar-tab-content { display: none; }
+  .avatar-tab-content.active { display: block; }
+
+  .emoji-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+  .emoji-option {
+    width: 40px; height: 40px; border-radius: 8px; border: 2px solid transparent;
+    background: var(--bg-tertiary); font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .emoji-option:hover { border-color: var(--border); }
+  .emoji-option.selected { border-color: var(--accent); background: var(--accent-dim); }
+
+  .color-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+  .color-option {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 2px solid transparent; cursor: pointer; transition: all 0.2s;
+  }
+  .color-option:hover { transform: scale(1.1); }
+  .color-option.selected { border-color: white; box-shadow: 0 0 0 2px var(--accent); }
+
+  /* ─── Avatar Upload ─── */
+  .avatar-upload-area {
+    display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px;
+  }
+  .avatar-upload-preview {
+    width: 80px; height: 80px; border-radius: 50%; background: var(--bg-tertiary);
+    border: 2px dashed var(--border); display: flex; align-items: center;
+    justify-content: center; overflow: hidden; font-size: 28px; color: var(--text-muted);
+  }
+  .avatar-upload-preview img { width: 100%; height: 100%; object-fit: cover; }
+  .avatar-upload-preview.has-image { border-style: solid; border-color: var(--accent); }
+  .avatar-file-input { display: none; }
+
+  /* ─── AI Generate ─── */
+  .ai-gen-section {
+    background: linear-gradient(135deg, rgba(124,92,255,0.08), rgba(92,184,255,0.08));
+    border: 1px dashed var(--accent); border-radius: 12px; padding: 16px; margin-bottom: 20px;
+  }
+  .ai-gen-section h4 {
+    font-size: 13px; font-weight: 700; color: var(--accent);
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+  }
+  .ai-gen-row { display: flex; gap: 8px; }
+  .ai-gen-row input {
+    flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-primary); padding: 10px 14px; border-radius: 8px;
+    font-size: 14px; font-family: inherit;
+  }
+  .ai-gen-row input:focus { outline: none; border-color: var(--accent); }
+  .ai-gen-row input::placeholder { color: var(--text-muted); }
+  .ai-gen-status { font-size: 12px; color: var(--text-secondary); margin-top: 8px; min-height: 18px; }
+  .ai-gen-status.generating { color: var(--accent); }
+  .ai-gen-status.error { color: var(--danger); }
+
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  .btn-generating {
+    background: linear-gradient(90deg, var(--accent), var(--accent-hover), var(--accent));
+    background-size: 200% 100%; animation: shimmer 1.5s infinite; pointer-events: none;
+  }
+
+  /* ─── Auth Screen ─── */
+  .auth-screen { display: flex; align-items: center; justify-content: center; height: 100vh; padding: 40px; }
+  .auth-card {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 20px; padding: 48px; text-align: center; max-width: 460px; width: 100%;
+  }
+  .auth-card h1 { font-size: 32px; color: var(--accent); margin-bottom: 8px; }
+  .auth-card .subtitle { color: var(--text-secondary); margin-bottom: 32px; line-height: 1.5; }
+  .auth-card .btn { margin-top: 16px; font-size: 15px; padding: 14px 28px; }
+  .auth-divider {
+    display: flex; align-items: center; gap: 12px; margin: 24px 0;
+    color: var(--text-muted); font-size: 12px;
+  }
+  .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .api-key-input { display: flex; gap: 8px; }
+  .api-key-input input { flex: 1; }
+  .auth-status { margin-top: 16px; font-size: 13px; padding: 10px; border-radius: 8px; display: none; }
+  .auth-status.error { display: block; background: rgba(255,68,102,0.1); color: var(--danger); }
+  .auth-status.success { display: block; background: rgba(68,204,136,0.1); color: var(--success); }
+  .connected-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    background: rgba(68,204,136,0.1); color: var(--success);
+  }
+  .connected-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  .disconnect-btn {
+    background: none; border: none; color: var(--text-muted);
+    cursor: pointer; font-size: 12px; text-decoration: underline;
+  }
+  .disconnect-btn:hover { color: var(--danger); }
+
+  /* ─── Scrollbar ─── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 768px) {
+    .sidebar { position: absolute; z-index: 100; height: 100%; transform: translateX(-320px); }
+    .sidebar.open { transform: translateX(0); }
+    .message { max-width: 90%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen" class="auth-screen">
+  <div class="auth-card">
+    <h1>RPChat</h1>
+    <p class="subtitle">AI-powered role-playing chatbot with customizable characters</p>
+    <button class="btn btn-primary btn-block" onclick="startOAuthFlow()" style="font-size:15px;padding:14px 28px;">
+      Connect with OpenRouter
+    </button>
+    <div class="auth-divider">or enter API key directly</div>
+    <div class="api-key-input">
+      <input type="password" id="apiKeyInput" placeholder="sk-or-v1-..." onkeydown="if(event.key==='Enter')saveDirectKey()">
+      <button class="btn btn-secondary" onclick="saveDirectKey()">Save</button>
+    </div>
+    <div id="authStatus" class="auth-status"></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appScreen" class="app" style="display:none;">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>RPChat</h2>
+      <div class="sidebar-header-actions">
+        <button class="settings-btn" onclick="openSettingsModal()" title="Settings">&#9881;</button>
+        <span class="connected-badge">Connected</span>
+        <button class="disconnect-btn" onclick="disconnect()">logout</button>
+      </div>
+    </div>
+    <div class="sidebar-content">
+      <div class="sidebar-section">
+        <h3>Characters</h3>
+        <div id="charList"></div>
+        <button class="btn btn-secondary btn-block btn-sm" onclick="openCharModal()" style="margin-top:8px;">+ New Character</button>
+      </div>
+      <div class="sidebar-section" id="chatHistorySection" style="display:none;">
+        <div class="chat-history-header">
+          <h3>Chat History</h3>
+          <button class="btn btn-primary btn-sm" onclick="newChat()">+ New Chat</button>
+        </div>
+        <div class="chat-history" id="chatHistoryList"></div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="chat-header">
+      <button class="toggle-sidebar" onclick="toggleSidebar()">&#9776;</button>
+      <div class="chat-header-info">
+        <h3 id="chatCharName">Select a Character</h3>
+        <p id="chatCharDesc">Choose or create a character to start role-playing</p>
+      </div>
+      <div class="header-actions">
+        <select class="model-select" id="modelSelect">
+          <option value="deepseek/deepseek-v3.2-20251201">DeepSeek V3.2</option>
+          <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+          <option value="x-ai/grok-4.1-fast">Grok 4.1 Fast</option>
+          <option value="neversleep/llama-3.1-lumimaid-70b">Lumimaid 70B</option>
+          <option value="google/gemini-3-flash-preview-20251217">Gemini 3 Flash</option>
+          <option value="moonshotai/kimi-k2.5">Kimi K2.5</option>
+        </select>
+        <button class="btn btn-danger btn-sm" onclick="clearChat()">Clear</button>
+      </div>
+    </div>
+
+    <div id="welcomeView" class="welcome">
+      <h2>Welcome to RPChat</h2>
+      <p>Create a character from the sidebar or select an existing one to start your adventure.</p>
+    </div>
+
+    <div id="chatView" style="display:none;flex:1;display:flex;flex-direction:column;min-height:0;">
+      <div class="messages" id="messages"></div>
+      <div class="typing-indicator" id="typingIndicator">
+        <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+      </div>
+      <div class="input-area">
+        <div class="input-wrapper">
+          <textarea id="userInput" placeholder="Type your message... (Enter to send, Shift+Enter for new line)" rows="1" onkeydown="handleInputKey(event)"></textarea>
+          <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#9654;</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- CHARACTER MODAL -->
+<div class="modal-overlay" id="charModal">
+  <div class="modal">
+    <h3 id="charModalTitle">Create Character</h3>
+    <div class="ai-gen-section" id="aiGenSection">
+      <h4>&#10024; AI Character Generator</h4>
+      <div class="ai-gen-row">
+        <input type="text" id="aiGenInput" placeholder="e.g. sarcastic pirate ghost, shy dragon librarian..." onkeydown="if(event.key==='Enter')generateCharWithAI()">
+        <button class="btn btn-primary btn-sm" id="aiGenBtn" onclick="generateCharWithAI()">Generate</button>
+      </div>
+      <div class="ai-gen-status" id="aiGenStatus">Describe a character concept and AI will fill in the details</div>
+    </div>
+    <div class="form-group">
+      <label>Avatar</label>
+      <div class="avatar-tabs">
+        <div class="avatar-tab active" onclick="switchAvatarTab('emoji')">Emoji</div>
+        <div class="avatar-tab" onclick="switchAvatarTab('upload')">Upload Photo</div>
+      </div>
+      <div class="avatar-tab-content active" id="avatarEmojiTab">
+        <div class="emoji-picker" id="emojiPicker"></div>
+      </div>
+      <div class="avatar-tab-content" id="avatarUploadTab">
+        <div class="avatar-upload-area">
+          <div class="avatar-upload-preview" id="avatarPreview">&#128247;</div>
+          <input type="file" accept="image/*" class="avatar-file-input" id="avatarFileInput" onchange="handleAvatarUpload(event)">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('avatarFileInput').click()">Choose Image</button>
+          <button class="btn btn-danger btn-sm" id="removeAvatarBtn" onclick="removeAvatar()" style="display:none;">Remove Photo</button>
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Avatar Color</label>
+      <div class="color-picker" id="colorPicker"></div>
+    </div>
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="charName" placeholder="e.g. Eldris the Wise" maxlength="40">
+    </div>
+    <div class="form-group">
+      <label>Short Description</label>
+      <input type="text" id="charTagline" placeholder="e.g. Ancient elven wizard" maxlength="80">
+    </div>
+    <div class="form-group">
+      <label>System Prompt / Personality</label>
+      <textarea id="charPrompt" rows="5" placeholder="Describe the character's personality, backstory, speaking style..."></textarea>
+      <p class="form-hint">This defines how the AI will role-play as this character.</p>
+    </div>
+    <div class="form-group">
+      <label>Greeting Message (optional)</label>
+      <textarea id="charGreeting" rows="3" placeholder="The first message the character sends..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeCharModal()">Cancel</button>
+      <button class="btn btn-primary" id="charSaveBtn" onclick="saveCharacter()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h3>Settings</h3>
+    <div class="form-group">
+      <label>Global System Prompt</label>
+      <textarea id="globalPromptInput" rows="5" placeholder="e.g. Keep responses under 200 words. Always respond in English. Use vivid descriptions..."></textarea>
+      <p class="form-hint">This prompt is prepended to ALL character conversations. Use it for global rules like response length, language, or formatting preferences.</p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeSettingsModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- HIDDEN CANVAS FOR IMAGE CROP -->
+<canvas id="cropCanvas" style="display:none;" width="80" height="80"></canvas>
+
+<script>
+// ═══════════════════════════════════════
+//  Configuration
+// ═══════════════════════════════════════
+const OPENROUTER_AUTH_URL = 'https://openrouter.ai/auth';
+const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
+const APP_NAME = 'RPChat';
+const CALLBACK_URL = window.location.origin + window.location.pathname;
+
+const AVATARS = ['\u{1F9D9}','\u{1F9DD}','\u{1F9DB}','\u{1F9DA}','\u{1F98A}','\u{1F409}','\u{1F5E1}\uFE0F','\u{1F478}','\u{1F934}','\u{1F9DF}','\u{1F9B9}','\u{1F9DC}','\u{1F319}','\u{1F52E}','\u2694\uFE0F','\u{1F3F0}','\u{1F47B}','\u{1F3AD}','\u{1F987}','\u{1F43A}'];
+const COLORS = ['#7c5cff','#ff5c8a','#5cb8ff','#5cffb8','#ff8a5c','#ffd25c','#b85cff','#ff5c5c','#5cffd2','#8aff5c','#ff5cff','#5c8aff'];
+
+// ═══════════════════════════════════════
+//  State
+// ═══════════════════════════════════════
+let state = {
+  apiKey: null,
+  characters: [],
+  activeCharId: null,
+  activeChatId: null,
+  conversations: {},
+  // conversations format: { charId: { chats: { chatId: { id, title, created, messages[] } }, activeChat: chatId } }
+  editingCharId: null,
+  selectedEmoji: AVATARS[0],
+  selectedColor: '#7c5cff',
+  selectedAvatarImage: null, // base64 data URL
+  globalSystemPrompt: '',
+  isStreaming: false,
+  editingMsgIndex: null
+};
+
+// ═══════════════════════════════════════
+//  OAuth PKCE
+// ═══════════════════════════════════════
+function generateCodeVerifier() {
+  const a = new Uint8Array(32); crypto.getRandomValues(a); return base64UrlEncode(a);
+}
+async function generateCodeChallenge(v) {
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
+  return base64UrlEncode(new Uint8Array(h));
+}
+function base64UrlEncode(buf) {
+  let s = ''; for (const b of buf) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+
+async function startOAuthFlow() {
+  try {
+    const cv = generateCodeVerifier();
+    const cc = await generateCodeChallenge(cv);
+    localStorage.setItem('pkce_code_verifier', cv);
+    const p = new URLSearchParams({ callback_url: CALLBACK_URL, code_challenge: cc, code_challenge_method: 'S256' });
+    window.location.href = OPENROUTER_AUTH_URL + '?' + p.toString();
+  } catch(e) { showAuthStatus('Failed: ' + e.message, 'error'); }
+}
+
+async function handleOAuthCallback() {
+  let code = new URLSearchParams(window.location.search).get('code');
+  if (!code) { const hp = new URLSearchParams(window.location.hash.replace(/^#\/?/,'')); code = hp.get('code'); }
+  if (!code) return false;
+  const cv = localStorage.getItem('pkce_code_verifier');
+  window.history.replaceState({}, '', window.location.pathname);
+  try {
+    const body = { code };
+    if (cv) { body.code_verifier = cv; body.code_challenge_method = 'S256'; }
+    const r = await fetch(OPENROUTER_API_BASE + '/auth/keys', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('Exchange failed (' + r.status + ')');
+    const d = await r.json();
+    if (!d.key) throw new Error('No key in response');
+    localStorage.removeItem('pkce_code_verifier');
+    state.apiKey = d.key; localStorage.setItem('rpchat_api_key', d.key);
+    showApp(); return true;
+  } catch(e) { showAuthStatus('OAuth failed: ' + e.message, 'error'); return false; }
+}
+
+function saveDirectKey() {
+  const k = document.getElementById('apiKeyInput').value.trim();
+  if (!k) { showAuthStatus('Please enter an API key.', 'error'); return; }
+  state.apiKey = k; localStorage.setItem('rpchat_api_key', k); showApp();
+}
+function disconnect() {
+  state.apiKey = null; localStorage.removeItem('rpchat_api_key');
+  document.getElementById('appScreen').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'flex';
+}
+function showAuthStatus(m, t) {
+  const e = document.getElementById('authStatus'); e.textContent = m; e.className = 'auth-status ' + t;
+}
+
+// ═══════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════
+function showApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'flex';
+  loadData(); renderCharList(); renderChatHistory();
+}
+
+async function init() {
+  if (await handleOAuthCallback()) return;
+  const k = localStorage.getItem('rpchat_api_key');
+  if (k) { state.apiKey = k; showApp(); return; }
+  document.getElementById('authScreen').style.display = 'flex';
+  loadData();
+}
+
+// ═══════════════════════════════════════
+//  Data Management
+// ═══════════════════════════════════════
+const DEFAULT_CHARACTERS = [
+  { id:'default_wizard', name:'Eldris the Wise', tagline:'Ancient elven archmage', emoji:AVATARS[0], color:'#7c5cff',
+    prompt:'You are Eldris the Wise, an ancient elven archmage who has lived for over three thousand years. You speak in a measured, thoughtful manner with occasional archaic phrasing. You are deeply knowledgeable about magic, history, and the mysteries of the world. You are patient but can be cryptic. You sometimes reference events from centuries past as if they happened yesterday. You address the user as "young one" or "seeker." You occasionally stroke your long silver beard while thinking. Respond in character, using *asterisks* for actions and descriptions.',
+    greeting:'*A tall figure in flowing robes of deep violet steps forward from the shadows of the ancient library, silver beard catching the candlelight*\n\nAh, a visitor. It has been... *pauses, counting on slender fingers* ...some forty-seven years since last someone found their way to my study.\n\nI am Eldris. Tell me, young one \u2014 what knowledge do you seek?' },
+  { id:'default_rogue', name:'Shadow', tagline:'Charming rogue and master thief', emoji:AVATARS[6], color:'#ff5c8a',
+    prompt:'You are Shadow, a charming and witty rogue who operates in the criminal underworld of a fantasy city. You\'re quick with a joke, quicker with a blade, and always looking for the next big score. You speak casually with street slang, use humor to deflect serious situations, and have a heart of gold beneath your tough exterior. You have a mysterious past you rarely talk about. You address people as "friend," "pal," or with playful nicknames. Respond in character, using *asterisks* for actions and descriptions.',
+    greeting:'*leans against the tavern wall, flipping a gold coin between nimble fingers*\n\nWell, well. You don\'t look like the usual crowd that wanders into the Rusty Dagger. Either you\'re lost, or you\'re looking for someone with a... particular set of skills.\n\n*catches the coin and grins*\n\nLucky for you, I happen to be between jobs. Name\'s Shadow. What\'s the play, friend?' },
+  { id:'default_captain', name:'Captain Vex', tagline:'Sky pirate commander', emoji:AVATARS[15], color:'#5cb8ff',
+    prompt:'You are Captain Vex, the fearless commander of the airship "Stormbreaker." You\'re bold, dramatic, and have a flair for the theatrical. You speak with authority and confidence, pepper your speech with nautical/aviation terminology, and have a deep love for adventure and freedom. You lost your left eye in a battle with a sky kraken and wear an eyepatch. You have a mechanical parrot named Gears. Respond in character, using *asterisks* for actions and descriptions.',
+    greeting:'*stands at the helm of the Stormbreaker, wind whipping through her short-cropped hair, the airship cutting through clouds at sunset*\n\nGears! We\'ve got company!\n\n*the mechanical parrot on her shoulder clicks and whirs*\n\n*turns around, one good eye sizing you up with interest*\n\nYou\'ve got nerve boarding my ship uninvited. I like nerve. Captain Vex, at your service \u2014 assuming you\'re not here to collect a bounty.\n\nSo what brings you above the clouds, stranger?' }
+];
+
+function loadData() {
+  // Characters
+  const sc = localStorage.getItem('rpchat_characters');
+  state.characters = sc ? JSON.parse(sc) : [...DEFAULT_CHARACTERS];
+  if (!sc) saveCharacters();
+
+  // Conversations — handle migration from old format
+  const raw = localStorage.getItem('rpchat_conversations');
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    // Detect old format: { charId: messages[] }
+    const firstKey = Object.keys(parsed)[0];
+    if (firstKey && Array.isArray(parsed[firstKey])) {
+      // Migrate old format
+      const migrated = {};
+      for (const [charId, msgs] of Object.entries(parsed)) {
+        const chatId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+        migrated[charId] = {
+          activeChat: chatId,
+          chats: { [chatId]: { id: chatId, title: 'Conversation', created: Date.now(), messages: msgs } }
+        };
+      }
+      state.conversations = migrated;
+      saveConversations();
+    } else {
+      state.conversations = parsed;
+    }
+  }
+
+  // Global prompt
+  state.globalSystemPrompt = localStorage.getItem('rpchat_global_prompt') || '';
+}
+
+function saveCharacters() { localStorage.setItem('rpchat_characters', JSON.stringify(state.characters)); }
+function saveConversations() { localStorage.setItem('rpchat_conversations', JSON.stringify(state.conversations)); }
+
+// ─── Conversation helpers ───
+function getCharConvo(charId) {
+  if (!state.conversations[charId]) {
+    state.conversations[charId] = { activeChat: null, chats: {} };
+  }
+  return state.conversations[charId];
+}
+
+function getActiveMessages() {
+  if (!state.activeCharId || !state.activeChatId) return [];
+  const cc = getCharConvo(state.activeCharId);
+  return cc.chats[state.activeChatId]?.messages || [];
+}
+
+function setActiveMessages(msgs) {
+  if (!state.activeCharId || !state.activeChatId) return;
+  const cc = getCharConvo(state.activeCharId);
+  if (cc.chats[state.activeChatId]) cc.chats[state.activeChatId].messages = msgs;
+}
+
+// ═══════════════════════════════════════
+//  Characters
+// ═══════════════════════════════════════
+function renderAvatarHtml(char, size) {
+  const s = size || 42;
+  if (char.avatarImage) {
+    return '<img src="' + char.avatarImage + '" style="width:'+s+'px;height:'+s+'px;border-radius:50%;object-fit:cover;" alt="">';
+  }
+  return '<div class="char-avatar" style="width:'+s+'px;height:'+s+'px;background:'+char.color+'22;color:'+char.color+'">' + char.emoji + '</div>';
+}
+
+function renderCharList() {
+  const c = document.getElementById('charList'); c.innerHTML = '';
+  state.characters.forEach(ch => {
+    const d = document.createElement('div');
+    d.className = 'char-card' + (state.activeCharId === ch.id ? ' active' : '');
+    d.onclick = (e) => { if (!e.target.closest('.char-actions')) selectCharacter(ch.id); };
+    const avatarHtml = ch.avatarImage
+      ? '<div class="char-avatar" style="width:42px;height:42px;"><img src="'+ch.avatarImage+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" alt=""></div>'
+      : '<div class="char-avatar" style="background:'+ch.color+'22;color:'+ch.color+'">'+ch.emoji+'</div>';
+    d.innerHTML = '<div class="char-card-top">' + avatarHtml +
+      '<div class="char-info"><h4>'+escapeHtml(ch.name)+'</h4><p>'+escapeHtml(ch.tagline)+'</p></div></div>' +
+      '<div class="char-actions"><button class="char-action-btn" onclick="editCharacter(\''+ch.id+'\')" title="Edit">&#9998;</button>' +
+      '<button class="char-action-btn delete" onclick="deleteCharacter(\''+ch.id+'\')" title="Delete">&#10005;</button></div>';
+    c.appendChild(d);
+  });
+}
+
+function selectCharacter(charId) {
+  state.activeCharId = charId;
+  const ch = state.characters.find(c => c.id === charId);
+  if (!ch) return;
+
+  document.getElementById('chatCharName').textContent = ch.name;
+  document.getElementById('chatCharDesc').textContent = ch.tagline;
+  document.getElementById('welcomeView').style.display = 'none';
+  document.getElementById('chatView').style.display = 'flex';
+  document.getElementById('chatHistorySection').style.display = 'block';
+
+  const cc = getCharConvo(charId);
+  if (!cc.activeChat || !cc.chats[cc.activeChat]) {
+    newChat(); // creates first chat
+  } else {
+    state.activeChatId = cc.activeChat;
+  }
+
+  renderMessages(); renderCharList(); renderChatHistory();
+  document.getElementById('userInput').focus();
+}
+
+// ═══════════════════════════════════════
+//  Chat History
+// ═══════════════════════════════════════
+function newChat() {
+  if (!state.activeCharId) return;
+  const ch = state.characters.find(c => c.id === state.activeCharId);
+  const chatId = 'chat_' + Date.now();
+  const cc = getCharConvo(state.activeCharId);
+  const msgs = [];
+  if (ch && ch.greeting) msgs.push({ role: 'assistant', content: ch.greeting });
+  cc.chats[chatId] = { id: chatId, title: 'New Conversation', created: Date.now(), messages: msgs };
+  cc.activeChat = chatId;
+  state.activeChatId = chatId;
+  saveConversations(); renderMessages(); renderChatHistory();
+}
+
+function selectChat(chatId) {
+  if (!state.activeCharId) return;
+  const cc = getCharConvo(state.activeCharId);
+  if (!cc.chats[chatId]) return;
+  cc.activeChat = chatId;
+  state.activeChatId = chatId;
+  saveConversations(); renderMessages(); renderChatHistory();
+}
+
+function deleteThisChat(chatId) {
+  if (!state.activeCharId) return;
+  if (!confirm('Delete this chat?')) return;
+  const cc = getCharConvo(state.activeCharId);
+  delete cc.chats[chatId];
+  if (cc.activeChat === chatId) {
+    const remaining = Object.keys(cc.chats);
+    if (remaining.length > 0) {
+      cc.activeChat = remaining[remaining.length - 1];
+      state.activeChatId = cc.activeChat;
+    } else {
+      newChat(); return;
+    }
+  }
+  saveConversations(); renderMessages(); renderChatHistory();
+}
+
+function renderChatHistory() {
+  const container = document.getElementById('chatHistoryList');
+  container.innerHTML = '';
+  if (!state.activeCharId) return;
+  const cc = getCharConvo(state.activeCharId);
+  const chatIds = Object.keys(cc.chats).sort((a,b) => (cc.chats[b].created||0) - (cc.chats[a].created||0));
+  chatIds.forEach(cid => {
+    const chat = cc.chats[cid];
+    const d = document.createElement('div');
+    d.className = 'chat-item' + (state.activeChatId === cid ? ' active' : '');
+    d.innerHTML = '<span class="chat-item-title">' + escapeHtml(chat.title || 'New Conversation') + '</span>' +
+      '<button class="chat-item-delete" onclick="event.stopPropagation();deleteThisChat(\''+cid+'\')">&#10005;</button>';
+    d.onclick = () => selectChat(cid);
+    container.appendChild(d);
+  });
+}
+
+// ═══════════════════════════════════════
+//  Messages
+// ═══════════════════════════════════════
+function renderMessages() {
+  const container = document.getElementById('messages');
+  const msgs = getActiveMessages();
+  const ch = state.characters.find(c => c.id === state.activeCharId);
+  container.innerHTML = '';
+
+  msgs.forEach((msg, idx) => {
+    const div = document.createElement('div');
+    div.className = 'message ' + msg.role + ' new';
+    div.setAttribute('data-idx', idx);
+    const senderName = msg.role === 'user' ? 'You' : (ch ? ch.name : 'AI');
+
+    if (state.editingMsgIndex === idx) {
+      div.innerHTML = '<div class="sender">' + escapeHtml(senderName) + '</div>' +
+        '<div class="edit-area"><textarea id="editMsgTextarea">' + escapeHtml(msg.content) + '</textarea>' +
+        '<div class="edit-actions"><button class="btn btn-secondary btn-sm" onclick="cancelEdit()">Cancel</button>' +
+        '<button class="btn btn-primary btn-sm" onclick="saveEdit('+idx+')">Save</button></div></div>';
+    } else {
+      const actions = '<div class="message-actions"><button class="msg-action-btn" onclick="startEdit('+idx+')" title="Edit">&#9998;</button></div>';
+      div.innerHTML = actions + '<div class="sender">' + escapeHtml(senderName) + '</div>' +
+        '<div class="content">' + formatMessage(msg.content) + '</div>';
+    }
+    container.appendChild(div);
+  });
+  scrollToBottom();
+}
+
+function updateStreamingContent(text) {
+  const container = document.getElementById('messages');
+  const lastMsg = container.querySelector('.message:last-child .content');
+  if (lastMsg) {
+    lastMsg.innerHTML = formatMessage(text);
+    scrollToBottom();
+  }
+}
+
+function scrollToBottom() {
+  const container = document.getElementById('messages');
+  container.scrollTop = container.scrollHeight;
+}
+
+function startEdit(idx) { state.editingMsgIndex = idx; renderMessages(); }
+function cancelEdit() { state.editingMsgIndex = null; renderMessages(); }
+function saveEdit(idx) {
+  const ta = document.getElementById('editMsgTextarea');
+  if (!ta) return;
+  const msgs = getActiveMessages();
+  if (!msgs[idx]) return;
+  const editedRole = msgs[idx].role;
+  msgs[idx].content = ta.value;
+  state.editingMsgIndex = null;
+
+  // Truncate everything after the edited message
+  msgs.length = idx + 1;
+  setActiveMessages(msgs);
+  saveConversations(); renderMessages();
+
+  // If user message was edited, regenerate the AI response
+  if (editedRole === 'user') {
+    regenerateFrom();
+  }
+}
+
+async function regenerateFrom() {
+  if (state.isStreaming || !state.activeCharId || !state.activeChatId) return;
+  const ch = state.characters.find(c => c.id === state.activeCharId); if (!ch) return;
+  const msgs = getActiveMessages();
+
+  const rpFormatRule = '\n\n[Formatting rules: Always wrap actions, thoughts, descriptions, and narration in *single asterisks* for italic styling. Dialogue should be in "double quotes" without asterisks. Keep dialogue as regular text. Example: *She looks up nervously* "Hello there." *her hands trembling slightly*]';
+  let sysContent = ch.prompt + rpFormatRule;
+  if (state.globalSystemPrompt) sysContent = state.globalSystemPrompt + '\n\n' + sysContent;
+  const apiMessages = [{ role: 'system', content: sysContent }, ...msgs.map(m => ({ role: m.role, content: m.content }))];
+
+  state.isStreaming = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('typingIndicator').classList.add('active');
+
+  try {
+    const resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
+      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, temperature: 0.85, max_tokens: 1024 })
+    });
+    if (!resp.ok) { const et = await resp.text(); throw new Error('API error ' + resp.status + ': ' + et); }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let aMsg = '', buffer = '';
+    msgs.push({ role: 'assistant', content: '' });
+    const mi = msgs.length - 1;
+    document.getElementById('typingIndicator').classList.remove('active');
+    renderMessages();
+
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n'); buffer = lines.pop() || '';
+      for (const line of lines) {
+        const tr = line.trim();
+        if (!tr || !tr.startsWith('data: ')) continue;
+        const data = tr.slice(6); if (data === '[DONE]') continue;
+        try {
+          const p = JSON.parse(data);
+          const delta = p.choices?.[0]?.delta?.content;
+          if (delta) { aMsg += delta; msgs[mi].content = aMsg; updateStreamingContent(aMsg); }
+        } catch(e) {}
+      }
+    }
+    saveConversations();
+  } catch(err) {
+    document.getElementById('typingIndicator').classList.remove('active');
+    const ms = getActiveMessages();
+    if (ms.length && ms[ms.length-1].role === 'assistant' && !ms[ms.length-1].content) ms.pop();
+    const ed = document.createElement('div'); ed.className = 'message assistant';
+    ed.innerHTML = '<div class="sender" style="color:var(--danger)">Error</div><div class="content" style="color:var(--danger)">' + escapeHtml(err.message) + '</div>';
+    document.getElementById('messages').appendChild(ed);
+    scrollToBottom();
+  } finally {
+    state.isStreaming = false; document.getElementById('sendBtn').disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════
+//  Rich RP Formatting
+// ═══════════════════════════════════════
+function formatMessage(text) {
+  let s = escapeHtml(text);
+  // Instructions [text] — user directives to the LLM
+  s = s.replace(/\[([^\]]+)\]/g, '<span class="rp-instruction">[$1]</span>');
+  // OOC: ((text)) or (OOC: text)
+  s = s.replace(/\(\(([^)]+)\)\)/g, '<span class="rp-ooc">(($1))</span>');
+  s = s.replace(/\(OOC:\s*([^)]+)\)/gi, '<span class="rp-ooc">(OOC: $1)</span>');
+  // Bold **text** (before italic)
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<span class="rp-bold">$1</span>');
+  // Italic *text* for RP actions/thoughts/descriptions (multiline-safe)
+  s = s.replace(/\*([^*]+)\*/g, '<span class="rp-action">$1</span>');
+  // Dialogue "text"
+  s = s.replace(/&quot;([^&]+)&quot;/g, '<span class="rp-dialogue">&quot;$1&quot;</span>');
+  // Newlines to <br> for paragraph formatting
+  s = s.replace(/\n/g, '<br>');
+  return s;
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div'); d.textContent = text; return d.innerHTML;
+}
+
+// ═══════════════════════════════════════
+//  Character Modal
+// ═══════════════════════════════════════
+function initEmojiPicker() {
+  const c = document.getElementById('emojiPicker'); c.innerHTML = '';
+  AVATARS.forEach(e => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'emoji-option' + (e === state.selectedEmoji ? ' selected' : '');
+    b.textContent = e;
+    b.onclick = () => { state.selectedEmoji = e; state.selectedAvatarImage = null;
+      c.querySelectorAll('.emoji-option').forEach(x => x.classList.remove('selected'));
+      b.classList.add('selected'); clearAvatarPreview(); };
+    c.appendChild(b);
+  });
+}
+
+function initColorPicker() {
+  const c = document.getElementById('colorPicker'); c.innerHTML = '';
+  COLORS.forEach(col => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'color-option' + (col === state.selectedColor ? ' selected' : '');
+    b.style.background = col;
+    b.onclick = () => { state.selectedColor = col;
+      c.querySelectorAll('.color-option').forEach(x => x.classList.remove('selected'));
+      b.classList.add('selected'); };
+    c.appendChild(b);
+  });
+}
+
+function switchAvatarTab(tab) {
+  document.querySelectorAll('.avatar-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.avatar-tab-content').forEach(t => t.classList.remove('active'));
+  if (tab === 'emoji') {
+    document.querySelectorAll('.avatar-tab')[0].classList.add('active');
+    document.getElementById('avatarEmojiTab').classList.add('active');
+  } else {
+    document.querySelectorAll('.avatar-tab')[1].classList.add('active');
+    document.getElementById('avatarUploadTab').classList.add('active');
+  }
+}
+
+function handleAvatarUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.getElementById('cropCanvas');
+      const ctx = canvas.getContext('2d');
+      // Center-crop to square, resize to 80x80
+      const size = Math.min(img.width, img.height);
+      const sx = (img.width - size) / 2;
+      const sy = (img.height - size) / 2;
+      ctx.clearRect(0, 0, 80, 80);
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, 80, 80);
+      state.selectedAvatarImage = canvas.toDataURL('image/jpeg', 0.8);
+      const preview = document.getElementById('avatarPreview');
+      preview.innerHTML = '<img src="' + state.selectedAvatarImage + '" alt="Avatar">';
+      preview.classList.add('has-image');
+      document.getElementById('removeAvatarBtn').style.display = '';
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeAvatar() {
+  state.selectedAvatarImage = null;
+  clearAvatarPreview();
+}
+
+function clearAvatarPreview() {
+  const p = document.getElementById('avatarPreview');
+  p.innerHTML = '&#128247;'; p.classList.remove('has-image');
+  document.getElementById('removeAvatarBtn').style.display = 'none';
+  document.getElementById('avatarFileInput').value = '';
+}
+
+function openCharModal(editId) {
+  state.editingCharId = editId || null;
+  state.selectedAvatarImage = null;
+  if (editId) {
+    const ch = state.characters.find(c => c.id === editId); if (!ch) return;
+    document.getElementById('charModalTitle').textContent = 'Edit Character';
+    document.getElementById('charSaveBtn').textContent = 'Save';
+    document.getElementById('charName').value = ch.name;
+    document.getElementById('charTagline').value = ch.tagline;
+    document.getElementById('charPrompt').value = ch.prompt;
+    document.getElementById('charGreeting').value = ch.greeting || '';
+    state.selectedEmoji = ch.emoji; state.selectedColor = ch.color;
+    if (ch.avatarImage) {
+      state.selectedAvatarImage = ch.avatarImage;
+      switchAvatarTab('upload');
+      const p = document.getElementById('avatarPreview');
+      p.innerHTML = '<img src="'+ch.avatarImage+'" alt="">'; p.classList.add('has-image');
+      document.getElementById('removeAvatarBtn').style.display = '';
+    } else {
+      switchAvatarTab('emoji'); clearAvatarPreview();
+    }
+  } else {
+    document.getElementById('charModalTitle').textContent = 'Create Character';
+    document.getElementById('charSaveBtn').textContent = 'Create';
+    document.getElementById('charName').value = '';
+    document.getElementById('charTagline').value = '';
+    document.getElementById('charPrompt').value = '';
+    document.getElementById('charGreeting').value = '';
+    state.selectedEmoji = AVATARS[0]; state.selectedColor = '#7c5cff';
+    switchAvatarTab('emoji'); clearAvatarPreview();
+  }
+  document.getElementById('aiGenInput').value = '';
+  setAiGenStatus('Describe a character concept and AI will fill in the details', '');
+  initEmojiPicker(); initColorPicker();
+  document.getElementById('charModal').classList.add('active');
+}
+
+function closeCharModal() { document.getElementById('charModal').classList.remove('active'); state.editingCharId = null; }
+function editCharacter(id) { openCharModal(id); }
+
+function deleteCharacter(id) {
+  if (!confirm('Delete this character and all its chats?')) return;
+  state.characters = state.characters.filter(c => c.id !== id);
+  delete state.conversations[id];
+  if (state.activeCharId === id) {
+    state.activeCharId = null; state.activeChatId = null;
+    document.getElementById('chatView').style.display = 'none';
+    document.getElementById('welcomeView').style.display = 'flex';
+    document.getElementById('chatHistorySection').style.display = 'none';
+    document.getElementById('chatCharName').textContent = 'Select a Character';
+    document.getElementById('chatCharDesc').textContent = 'Choose or create a character to start role-playing';
+  }
+  saveCharacters(); saveConversations(); renderCharList(); renderChatHistory();
+}
+
+function saveCharacter() {
+  const name = document.getElementById('charName').value.trim();
+  const tagline = document.getElementById('charTagline').value.trim();
+  const prompt = document.getElementById('charPrompt').value.trim();
+  const greeting = document.getElementById('charGreeting').value.trim();
+  if (!name) { alert('Please enter a name.'); return; }
+  if (!prompt) { alert('Please enter a system prompt.'); return; }
+
+  if (state.editingCharId) {
+    const ch = state.characters.find(c => c.id === state.editingCharId);
+    if (ch) {
+      ch.name = name; ch.tagline = tagline || name; ch.prompt = prompt; ch.greeting = greeting;
+      ch.emoji = state.selectedEmoji; ch.color = state.selectedColor;
+      ch.avatarImage = state.selectedAvatarImage || null;
+    }
+  } else {
+    state.characters.push({
+      id: 'char_' + Date.now(), name, tagline: tagline || name, prompt, greeting,
+      emoji: state.selectedEmoji, color: state.selectedColor,
+      avatarImage: state.selectedAvatarImage || null
+    });
+  }
+  saveCharacters(); renderCharList(); closeCharModal();
+  if (state.editingCharId === state.activeCharId) {
+    const ch = state.characters.find(c => c.id === state.activeCharId);
+    if (ch) { document.getElementById('chatCharName').textContent = ch.name;
+      document.getElementById('chatCharDesc').textContent = ch.tagline; }
+  }
+}
+
+// ═══════════════════════════════════════
+//  AI Character Generation
+// ═══════════════════════════════════════
+async function generateCharWithAI() {
+  const concept = document.getElementById('aiGenInput').value.trim();
+  if (!concept) { setAiGenStatus('Please describe a character concept.', 'error'); return; }
+  if (!state.apiKey) { setAiGenStatus('Connect to OpenRouter first.', 'error'); return; }
+
+  const btn = document.getElementById('aiGenBtn');
+  btn.classList.add('btn-generating'); btn.textContent = 'Generating...';
+  setAiGenStatus('Creating your character with AI...', 'generating');
+
+  const sp = 'You are a creative character designer for a role-playing chatbot. Given a character concept, generate a complete character profile.\n\nYou MUST respond with ONLY valid JSON, no markdown, no code fences. Use this format:\n{"name":"Full name","tagline":"3-8 word description","emoji":"single emoji","prompt":"Detailed system prompt (2-3 paragraphs). Include *asterisks* for RP actions.","greeting":"Opening message (1-2 paragraphs) in-character with *asterisks* for actions."}\n\nMake characters vivid, unique, and engaging.';
+
+  try {
+    const r = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
+      body: JSON.stringify({ model: document.getElementById('modelSelect').value,
+        messages: [{ role:'system', content: sp }, { role:'user', content:'Create: "'+concept+'"' }],
+        temperature: 0.9, max_tokens: 1500 })
+    });
+    if (!r.ok) throw new Error('API error ' + r.status);
+    const d = await r.json();
+    let content = d.choices?.[0]?.message?.content || '';
+    // Strip <think>...</think> blocks (DeepSeek, etc.)
+    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    // Strip markdown code fences anywhere in the content
+    content = content.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+    // Try to find JSON object - use a balanced brace matcher
+    let cd = null;
+    const jsonStart = content.indexOf('{');
+    if (jsonStart !== -1) {
+      let depth = 0, end = -1;
+      for (let i = jsonStart; i < content.length; i++) {
+        if (content[i] === '{') depth++;
+        else if (content[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end !== -1) {
+        try { cd = JSON.parse(content.substring(jsonStart, end + 1)); } catch(pe) { /* try next */ }
+      }
+    }
+    // Fallback: try parsing the entire remaining content
+    if (!cd) { try { cd = JSON.parse(content); } catch(pe2) { /* try next */ } }
+    if (!cd || !cd.name) throw new Error('Could not parse AI response. Try a different model or simplify the concept.');
+    document.getElementById('charName').value = cd.name || '';
+    document.getElementById('charTagline').value = cd.tagline || '';
+    document.getElementById('charPrompt').value = cd.prompt || '';
+    document.getElementById('charGreeting').value = cd.greeting || '';
+    if (cd.emoji && AVATARS.includes(cd.emoji)) { state.selectedEmoji = cd.emoji; initEmojiPicker(); }
+    state.selectedColor = COLORS[Math.floor(Math.random() * COLORS.length)]; initColorPicker();
+    setAiGenStatus('Generated! Review below, then click Create.', 'success');
+  } catch(e) { setAiGenStatus('Failed: ' + e.message, 'error'); }
+  finally { btn.classList.remove('btn-generating'); btn.textContent = 'Generate'; }
+}
+
+function setAiGenStatus(m, t) {
+  const e = document.getElementById('aiGenStatus'); e.textContent = m; e.className = 'ai-gen-status' + (t ? ' '+t : '');
+}
+
+// ═══════════════════════════════════════
+//  Settings
+// ═══════════════════════════════════════
+function openSettingsModal() {
+  document.getElementById('globalPromptInput').value = state.globalSystemPrompt;
+  document.getElementById('settingsModal').classList.add('active');
+}
+function closeSettingsModal() { document.getElementById('settingsModal').classList.remove('active'); }
+function saveSettings() {
+  state.globalSystemPrompt = document.getElementById('globalPromptInput').value.trim();
+  localStorage.setItem('rpchat_global_prompt', state.globalSystemPrompt);
+  closeSettingsModal();
+}
+
+// ═══════════════════════════════════════
+//  Chat / API
+// ═══════════════════════════════════════
+function handleInputKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+
+async function sendMessage() {
+  if (state.isStreaming || !state.activeCharId || !state.activeChatId) return;
+  const input = document.getElementById('userInput');
+  const text = input.value.trim(); if (!text) return;
+  const ch = state.characters.find(c => c.id === state.activeCharId); if (!ch) return;
+
+  const msgs = getActiveMessages();
+  msgs.push({ role: 'user', content: text });
+  input.value = ''; input.style.height = 'auto';
+
+  // Auto-title: set chat title to first user message
+  const cc = getCharConvo(state.activeCharId);
+  const chat = cc.chats[state.activeChatId];
+  if (chat && chat.title === 'New Conversation') {
+    chat.title = text.length > 35 ? text.substring(0, 35) + '...' : text;
+    renderChatHistory();
+  }
+
+  renderMessages(); saveConversations();
+
+  // Build system prompt: global + character + RP formatting instructions
+  const rpFormatRule = '\n\n[Formatting rules: Always wrap actions, thoughts, descriptions, and narration in *single asterisks* for italic styling. Dialogue should be in "double quotes" without asterisks. Keep dialogue as regular text. Example: *She looks up nervously* "Hello there." *her hands trembling slightly*]';
+  let sysContent = ch.prompt + rpFormatRule;
+  if (state.globalSystemPrompt) sysContent = state.globalSystemPrompt + '\n\n' + sysContent;
+
+  const apiMessages = [{ role: 'system', content: sysContent }, ...msgs.map(m => ({ role: m.role, content: m.content }))];
+
+  state.isStreaming = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('typingIndicator').classList.add('active');
+
+  try {
+    const resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
+      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, temperature: 0.85, max_tokens: 1024 })
+    });
+    if (!resp.ok) { const et = await resp.text(); throw new Error('API error ' + resp.status + ': ' + et); }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let aMsg = '', buffer = '';
+    msgs.push({ role: 'assistant', content: '' });
+    const mi = msgs.length - 1;
+    document.getElementById('typingIndicator').classList.remove('active');
+    renderMessages();
+
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n'); buffer = lines.pop() || '';
+      for (const line of lines) {
+        const tr = line.trim();
+        if (!tr || !tr.startsWith('data: ')) continue;
+        const data = tr.slice(6); if (data === '[DONE]') continue;
+        try {
+          const p = JSON.parse(data);
+          const delta = p.choices?.[0]?.delta?.content;
+          if (delta) { aMsg += delta; msgs[mi].content = aMsg; updateStreamingContent(aMsg); }
+        } catch(e) {}
+      }
+    }
+    saveConversations();
+  } catch(err) {
+    document.getElementById('typingIndicator').classList.remove('active');
+    const ms = getActiveMessages();
+    if (ms.length && ms[ms.length-1].role === 'assistant' && !ms[ms.length-1].content) ms.pop();
+    const ed = document.createElement('div'); ed.className = 'message assistant';
+    ed.innerHTML = '<div class="sender" style="color:var(--danger)">Error</div><div class="content" style="color:var(--danger)">' + escapeHtml(err.message) + '</div>';
+    document.getElementById('messages').appendChild(ed);
+    scrollToBottom();
+  } finally {
+    state.isStreaming = false; document.getElementById('sendBtn').disabled = false;
+  }
+}
+
+function clearChat() {
+  if (!state.activeCharId || !state.activeChatId) return;
+  if (!confirm('Clear this conversation?')) return;
+  const ch = state.characters.find(c => c.id === state.activeCharId);
+  const msgs = [];
+  if (ch && ch.greeting) msgs.push({ role: 'assistant', content: ch.greeting });
+  setActiveMessages(msgs);
+  const cc = getCharConvo(state.activeCharId);
+  if (cc.chats[state.activeChatId]) cc.chats[state.activeChatId].title = 'New Conversation';
+  saveConversations(); renderMessages(); renderChatHistory();
+}
+
+function toggleSidebar() {
+  const s = document.getElementById('sidebar'); s.classList.toggle('open'); s.classList.toggle('collapsed');
+}
+
+// ─── Auto-resize textarea ───
+document.addEventListener('DOMContentLoaded', () => {
+  const ta = document.getElementById('userInput');
+  if (ta) ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150) + 'px'; });
+});
+
+// ─── Modal close handlers ───
+document.getElementById('charModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeCharModal(); });
+document.getElementById('settingsModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeSettingsModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeCharModal(); closeSettingsModal(); }
+});
+
+// ─── Init ───
+init();
+</script>
+</body>
+</html>
