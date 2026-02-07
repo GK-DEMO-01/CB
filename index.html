@@ -994,6 +994,10 @@ function newChat() {
   cc.activeChat = chatId;
   state.activeChatId = chatId;
   saveConversations(); renderMessages(); renderChatHistory();
+  if (window.innerWidth <= 768) {
+    const s = document.getElementById('sidebar');
+    s.classList.remove('open'); s.classList.add('collapsed');
+  }
 }
 
 function selectChat(chatId) {
@@ -1003,6 +1007,10 @@ function selectChat(chatId) {
   cc.activeChat = chatId;
   state.activeChatId = chatId;
   saveConversations(); renderMessages(); renderChatHistory();
+  if (window.innerWidth <= 768) {
+    const s = document.getElementById('sidebar');
+    s.classList.remove('open'); s.classList.add('collapsed');
+  }
 }
 
 function deleteThisChat(chatId) {
