@@ -450,6 +450,55 @@
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+  /* ─── More Button (character cards) ─── */
+  .char-more-btn {
+    position: absolute; top: 10px; right: 10px;
+    width: 28px; height: 28px; border-radius: 6px; border: none;
+    background: var(--bg-secondary); color: var(--text-secondary);
+    cursor: pointer; font-size: 16px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2; -webkit-tap-highlight-color: transparent;
+    transition: all 0.2s;
+  }
+  .char-more-btn:hover { color: var(--text-primary); background: var(--border); }
+
+  /* ─── Context Menu ─── */
+  .context-menu {
+    position: fixed; z-index: 2000;
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px; min-width: 160px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    animation: modalIn 0.15s ease;
+  }
+  .context-menu-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-radius: 6px; border: none;
+    background: none; color: var(--text-primary); width: 100%;
+    font-size: 13px; cursor: pointer; text-align: left;
+    font-family: inherit; -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s;
+  }
+  .context-menu-item:hover { background: var(--bg-tertiary); }
+  .context-menu-item.danger { color: var(--danger); }
+  .context-menu-item.danger:hover { background: rgba(255,68,102,0.1); }
+  .context-menu-sep { height: 1px; background: var(--border); margin: 4px 8px; }
+
+  /* ─── Chat Item More Button ─── */
+  .chat-item-more {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 14px; padding: 2px 4px; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chat-item-more:hover { color: var(--text-primary); }
+
+  /* ─── Import Button Inline ─── */
+  .import-btn-inline {
+    background: none; border: none; color: var(--text-muted);
+    font-size: 11px; cursor: pointer; padding: 2px 6px;
+    font-family: inherit; -webkit-tap-highlight-color: transparent;
+  }
+  .import-btn-inline:hover { color: var(--accent); }
+
   /* ─── Responsive ─── */
   @media (max-width: 768px) {
     .sidebar { position: absolute; z-index: 100; height: 100%; transform: translateX(-320px); }
@@ -490,14 +539,20 @@
     </div>
     <div class="sidebar-content">
       <div class="sidebar-section">
-        <h3>Characters</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <h3>Characters</h3>
+          <button class="import-btn-inline" onclick="openImportCharModal()" title="Import character">&#8615; Import</button>
+        </div>
         <div id="charList"></div>
         <button class="btn btn-secondary btn-block btn-sm" onclick="openCharModal()" style="margin-top:8px;">+ New Character</button>
       </div>
       <div class="sidebar-section" id="chatHistorySection" style="display:none;">
         <div class="chat-history-header">
           <h3>Chat History</h3>
-          <button class="btn btn-primary btn-sm" onclick="newChat()">+ New Chat</button>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="import-btn-inline" onclick="openImportChatModal()" title="Import chat">&#8615; Import</button>
+            <button class="btn btn-primary btn-sm" onclick="newChat()">+ New Chat</button>
+          </div>
         </div>
         <div class="chat-history" id="chatHistoryList"></div>
       </div>
@@ -600,6 +655,7 @@
       <textarea id="charGreeting" rows="3" placeholder="The first message the character sends..."></textarea>
     </div>
     <div class="modal-actions">
+      <button class="btn btn-secondary" id="charExportFromEditBtn" onclick="exportCharacterFromEdit()" style="display:none;margin-right:auto;">&#8615; Export</button>
       <button class="btn btn-secondary" onclick="closeCharModal()">Cancel</button>
       <button class="btn btn-primary" id="charSaveBtn" onclick="saveCharacter()">Create</button>
     </div>
@@ -624,6 +680,63 @@
       <button class="btn btn-secondary" onclick="closeSettingsModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
     </div>
+    </div>
+  </div>
+</div>
+
+<!-- EXPORT CHARACTER MODAL -->
+<div class="modal-overlay" id="exportCharModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Export Character</h3>
+      <button class="modal-close-btn" onclick="closeExportCharModal()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;" id="exportCharDesc"></p>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px;background:var(--bg-tertiary);border-radius:8px;margin-bottom:16px;">
+        <input type="checkbox" id="exportIncludeChats" checked>
+        <span style="font-size:14px;">Include chat history</span>
+      </label>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeExportCharModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="executeCharExport()">&#8615; Download .json</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT CHARACTER MODAL -->
+<div class="modal-overlay" id="importCharModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Import Character</h3>
+      <button class="modal-close-btn" onclick="closeImportCharModal()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">
+        Select a <strong>.json</strong> file exported from RPChat. The character and optionally its chat history will be imported.
+      </p>
+      <input type="file" accept=".json" id="importCharFileInput" style="display:none;" onchange="handleImportCharFile(event)">
+      <button class="btn btn-primary btn-block" onclick="document.getElementById('importCharFileInput').click()">Choose File</button>
+      <div id="importCharStatus" style="margin-top:12px;font-size:13px;min-height:20px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT CHAT MODAL -->
+<div class="modal-overlay" id="importChatModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Import Chat</h3>
+      <button class="modal-close-btn" onclick="closeImportChatModal()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">
+        Select a <strong>.json</strong> chat file to import into the current character's chat history.
+      </p>
+      <input type="file" accept=".json" id="importChatFileInput" style="display:none;" onchange="handleImportChatFile(event)">
+      <button class="btn btn-primary btn-block" onclick="document.getElementById('importChatFileInput').click()">Choose File</button>
+      <div id="importChatStatus" style="margin-top:12px;font-size:13px;min-height:20px;"></div>
     </div>
   </div>
 </div>
@@ -832,8 +945,7 @@ function renderCharList() {
       : '<div class="char-avatar" style="background:'+ch.color+'22;color:'+ch.color+'">'+ch.emoji+'</div>';
     d.innerHTML = '<div class="char-card-top">' + avatarHtml +
       '<div class="char-info"><h4>'+escapeHtml(ch.name)+'</h4><p>'+escapeHtml(ch.tagline)+'</p></div></div>' +
-      '<div class="char-actions"><button class="char-action-btn" onclick="editCharacter(\''+ch.id+'\')" title="Edit">&#9998;</button>' +
-      '<button class="char-action-btn delete" onclick="deleteCharacter(\''+ch.id+'\')" title="Delete">&#10005;</button></div>';
+      '<button class="char-more-btn" onclick="event.stopPropagation();openCharContextMenu(event,\''+ch.id+'\')" title="More">&#8942;</button>';
     c.appendChild(d);
   });
 }
@@ -921,7 +1033,7 @@ function renderChatHistory() {
     const d = document.createElement('div');
     d.className = 'chat-item' + (state.activeChatId === cid ? ' active' : '');
     d.innerHTML = '<span class="chat-item-title">' + escapeHtml(chat.title || 'New Conversation') + '</span>' +
-      '<button class="chat-item-delete" onclick="event.stopPropagation();deleteThisChat(\''+cid+'\')">&#10005;</button>';
+      '<button class="chat-item-more" onclick="event.stopPropagation();openChatContextMenu(event,\''+cid+'\')" title="More">&#8942;</button>';
     d.onclick = () => selectChat(cid);
     container.appendChild(d);
   });
@@ -1189,6 +1301,7 @@ function openCharModal(editId) {
   }
   document.getElementById('aiGenInput').value = '';
   setAiGenStatus('Describe a character concept and AI will fill in the details', '');
+  document.getElementById('charExportFromEditBtn').style.display = editId ? '' : 'none';
   initEmojiPicker(); initColorPicker();
   document.getElementById('charModal').classList.add('active');
 }
@@ -1417,11 +1530,220 @@ document.addEventListener('DOMContentLoaded', () => {
   if (ta) ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150) + 'px'; });
 });
 
+// ═══════════════════════════════════════
+//  Context Menus
+// ═══════════════════════════════════════
+let activeContextMenu = null;
+
+function closeContextMenu() {
+  if (activeContextMenu) { activeContextMenu.remove(); activeContextMenu = null; }
+  document.removeEventListener('click', closeContextMenu);
+}
+
+function showContextMenu(x, y, items) {
+  closeContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'context-menu';
+  items.forEach(item => {
+    if (item === 'sep') {
+      const sep = document.createElement('div'); sep.className = 'context-menu-sep'; menu.appendChild(sep); return;
+    }
+    const btn = document.createElement('button');
+    btn.className = 'context-menu-item' + (item.danger ? ' danger' : '');
+    btn.innerHTML = item.icon + ' ' + item.label;
+    btn.onclick = (e) => { e.stopPropagation(); closeContextMenu(); item.action(); };
+    menu.appendChild(btn);
+  });
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  let left = x, top = y;
+  if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 8;
+  if (top + rect.height > window.innerHeight) top = window.innerHeight - rect.height - 8;
+  if (left < 8) left = 8;
+  if (top < 8) top = 8;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  activeContextMenu = menu;
+  setTimeout(() => document.addEventListener('click', closeContextMenu), 0);
+}
+
+function openCharContextMenu(event, charId) {
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  showContextMenu(rect.left, rect.bottom + 4, [
+    { icon: '&#9998;', label: 'Edit', action: () => editCharacter(charId) },
+    { icon: '&#8615;', label: 'Export', action: () => openExportCharModal(charId) },
+    'sep',
+    { icon: '&#10005;', label: 'Delete', danger: true, action: () => deleteCharacter(charId) }
+  ]);
+}
+
+function openChatContextMenu(event, chatId) {
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  showContextMenu(rect.left, rect.bottom + 4, [
+    { icon: '&#8615;', label: 'Export Chat', action: () => exportChat(chatId) },
+    'sep',
+    { icon: '&#10005;', label: 'Delete', danger: true, action: () => deleteThisChat(chatId) }
+  ]);
+}
+
+// ═══════════════════════════════════════
+//  Export / Import
+// ═══════════════════════════════════════
+let exportingCharId = null;
+
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function sanitizeFilename(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 40);
+}
+
+// ─── Export Character ───
+function openExportCharModal(charId) {
+  exportingCharId = charId;
+  const ch = state.characters.find(c => c.id === charId); if (!ch) return;
+  document.getElementById('exportCharDesc').textContent = 'Export "' + ch.name + '" as a JSON file.';
+  document.getElementById('exportIncludeChats').checked = true;
+  document.getElementById('exportCharModal').classList.add('active');
+}
+function closeExportCharModal() {
+  document.getElementById('exportCharModal').classList.remove('active'); exportingCharId = null;
+}
+
+function exportCharacterFromEdit() {
+  if (state.editingCharId) { const id = state.editingCharId; closeCharModal(); openExportCharModal(id); }
+}
+
+function executeCharExport() {
+  const ch = state.characters.find(c => c.id === exportingCharId); if (!ch) return;
+  const includeChats = document.getElementById('exportIncludeChats').checked;
+  const exportData = {
+    _type: 'rpchat_character', _version: 1, _exportedAt: new Date().toISOString(),
+    character: { name: ch.name, tagline: ch.tagline, emoji: ch.emoji, color: ch.color,
+      prompt: ch.prompt, greeting: ch.greeting || '', avatarImage: ch.avatarImage || null }
+  };
+  if (includeChats) {
+    const cc = state.conversations[exportingCharId];
+    if (cc && cc.chats) {
+      exportData.chats = Object.values(cc.chats).map(chat => ({
+        title: chat.title, created: chat.created, messages: chat.messages
+      }));
+    }
+  }
+  downloadJson(exportData, 'rpchat-char-' + sanitizeFilename(ch.name) + '.json');
+  closeExportCharModal();
+}
+
+// ─── Export Chat ───
+function exportChat(chatId) {
+  if (!state.activeCharId) return;
+  const cc = getCharConvo(state.activeCharId);
+  const chat = cc.chats[chatId]; if (!chat) return;
+  const ch = state.characters.find(c => c.id === state.activeCharId);
+  const exportData = {
+    _type: 'rpchat_chat', _version: 1, _exportedAt: new Date().toISOString(),
+    characterName: ch ? ch.name : 'Unknown',
+    chat: { title: chat.title, created: chat.created, messages: chat.messages }
+  };
+  downloadJson(exportData, 'rpchat-chat-' + sanitizeFilename(chat.title || 'conversation') + '.json');
+}
+
+// ─── Import Character ───
+function openImportCharModal() {
+  document.getElementById('importCharFileInput').value = '';
+  document.getElementById('importCharStatus').textContent = '';
+  document.getElementById('importCharModal').classList.add('active');
+}
+function closeImportCharModal() { document.getElementById('importCharModal').classList.remove('active'); }
+
+function handleImportCharFile(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const status = document.getElementById('importCharStatus');
+  status.textContent = 'Reading file...'; status.style.color = 'var(--text-secondary)';
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data._type !== 'rpchat_character' || !data.character || !data.character.name)
+        throw new Error('Not a valid RPChat character file.');
+      const c = data.character;
+      const newId = 'char_' + Date.now();
+      let name = c.name;
+      if (state.characters.some(ch => ch.name === name)) name += ' (imported)';
+      const newChar = { id: newId, name, tagline: c.tagline || name, emoji: c.emoji || AVATARS[0],
+        color: c.color || '#7c5cff', prompt: c.prompt || '', greeting: c.greeting || '',
+        avatarImage: c.avatarImage || null };
+      state.characters.push(newChar);
+      let chatCount = 0;
+      if (data.chats && Array.isArray(data.chats) && data.chats.length > 0) {
+        const convo = getCharConvo(newId);
+        data.chats.forEach(chat => {
+          const chatId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+          convo.chats[chatId] = { id: chatId, title: chat.title || 'Imported Chat',
+            created: chat.created || Date.now(), messages: chat.messages || [] };
+          if (!convo.activeChat) convo.activeChat = chatId;
+        });
+        chatCount = data.chats.length;
+        saveConversations();
+      }
+      saveCharacters(); renderCharList();
+      status.textContent = 'Imported "' + newChar.name + '"' + (chatCount ? ' with ' + chatCount + ' chat(s)' : '') + '.';
+      status.style.color = 'var(--success)';
+    } catch(err) { status.textContent = 'Error: ' + err.message; status.style.color = 'var(--danger)'; }
+  };
+  reader.onerror = () => { status.textContent = 'Error reading file.'; status.style.color = 'var(--danger)'; };
+  reader.readAsText(file);
+}
+
+// ─── Import Chat ───
+function openImportChatModal() {
+  if (!state.activeCharId) { alert('Please select a character first.'); return; }
+  document.getElementById('importChatFileInput').value = '';
+  document.getElementById('importChatStatus').textContent = '';
+  document.getElementById('importChatModal').classList.add('active');
+}
+function closeImportChatModal() { document.getElementById('importChatModal').classList.remove('active'); }
+
+function handleImportChatFile(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const status = document.getElementById('importChatStatus');
+  status.textContent = 'Reading file...'; status.style.color = 'var(--text-secondary)';
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data._type !== 'rpchat_chat' || !data.chat || !data.chat.messages)
+        throw new Error('Not a valid RPChat chat file.');
+      const cc = getCharConvo(state.activeCharId);
+      const chatId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+      cc.chats[chatId] = { id: chatId, title: data.chat.title || 'Imported Chat',
+        created: data.chat.created || Date.now(), messages: data.chat.messages };
+      cc.activeChat = chatId; state.activeChatId = chatId;
+      saveConversations(); renderMessages(); renderChatHistory();
+      status.textContent = 'Imported "' + (data.chat.title || 'chat') + '" with ' + data.chat.messages.length + ' messages.';
+      status.style.color = 'var(--success)';
+    } catch(err) { status.textContent = 'Error: ' + err.message; status.style.color = 'var(--danger)'; }
+  };
+  reader.onerror = () => { status.textContent = 'Error reading file.'; status.style.color = 'var(--danger)'; };
+  reader.readAsText(file);
+}
+
 // ─── Modal close handlers ───
 document.getElementById('charModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeCharModal(); });
 document.getElementById('settingsModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeSettingsModal(); });
+document.getElementById('exportCharModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeExportCharModal(); });
+document.getElementById('importCharModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeImportCharModal(); });
+document.getElementById('importChatModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeImportChatModal(); });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeCharModal(); closeSettingsModal(); }
+  if (e.key === 'Escape') { closeCharModal(); closeSettingsModal(); closeExportCharModal(); closeImportCharModal(); closeImportChatModal(); closeContextMenu(); }
 });
 
 // ─── Init ───
