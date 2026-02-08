@@ -543,6 +543,41 @@
     padding: 6px 12px; margin: 4px auto;
   }
 
+  /* ─── Previous Context Banner ─── */
+  .context-banner {
+    background: var(--accent-dim); border: 1px solid var(--accent);
+    border-radius: 12px; padding: 12px 16px; margin: 8px 16px 12px;
+    font-size: 13px; line-height: 1.5; color: var(--text-secondary);
+  }
+  .context-banner-header {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .context-banner-header h4 {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--accent); margin: 0;
+  }
+  .context-banner-toggle {
+    background: none; border: none; color: var(--accent);
+    font-size: 14px; cursor: pointer; padding: 2px 6px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .context-banner-body { margin-top: 10px; display: none; }
+  .context-banner-body.open { display: block; }
+  .context-banner-body .context-summary { margin-bottom: 8px; color: var(--text-primary); }
+  .context-char-memory {
+    background: var(--bg-tertiary); border-radius: 8px;
+    padding: 8px 12px; margin-top: 6px;
+  }
+  .context-char-memory h5 {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; color: var(--text-muted); margin: 0 0 4px;
+  }
+  .context-banner-source {
+    font-size: 11px; color: var(--text-muted); margin-top: 8px; font-style: italic;
+  }
+
   /* ─── Command Hint Popup ─── */
   .command-hint {
     position: absolute; bottom: 100%; left: 0; right: 0;
@@ -654,7 +689,7 @@
       <div class="input-area" style="position:relative;">
         <div class="command-hint" id="commandHint"></div>
         <div class="input-wrapper">
-          <textarea id="userInput" placeholder="Type your message... (+ add char, - remove, @ mention, /n narrate)" rows="1" onkeydown="handleInputKey(event)"></textarea>
+          <textarea id="userInput" placeholder="Type your message... (+add, -remove, @mention, /n narrate, /n /u context)" rows="1" onkeydown="handleInputKey(event)"></textarea>
           <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#9654;</button>
         </div>
       </div>
@@ -811,6 +846,29 @@
       <input type="file" accept=".json" id="importChatFileInput" style="display:none;" onchange="handleImportChatFile(event)">
       <button class="btn btn-primary btn-block" onclick="document.getElementById('importChatFileInput').click()">Choose File</button>
       <div id="importChatStatus" style="margin-top:12px;font-size:13px;min-height:20px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD CONTEXT MODAL -->
+<div class="modal-overlay" id="uploadContextModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Load Previous Chat Context</h3>
+      <button class="modal-close-btn" onclick="closeUploadContextModal()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">
+        Upload a previously exported chat. The AI will summarize key events and character memories to carry forward into this conversation.
+      </p>
+      <div class="form-group">
+        <label>Focus / Context Title (optional)</label>
+        <input type="text" id="contextTitleInput" placeholder="e.g. Mom's Vacation Plan" style="width:100%;padding:10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:14px;">
+        <p class="form-hint">Leave blank for a general summary, or specify a topic to focus the AI's memory extraction.</p>
+      </div>
+      <input type="file" accept=".json" id="uploadContextFileInput" style="display:none;" onchange="handleUploadContextFile(event)">
+      <button class="btn btn-primary btn-block" id="uploadContextChooseBtn" onclick="document.getElementById('uploadContextFileInput').click()">Choose Chat File</button>
+      <div id="uploadContextStatus" style="margin-top:12px;font-size:13px;min-height:20px;"></div>
     </div>
   </div>
 </div>
@@ -1135,6 +1193,31 @@ function renderMessages() {
   var msgs = getActiveMessages();
   var primaryChar = state.characters.find(function(c) { return c.id === state.activeCharId; });
   container.innerHTML = '';
+
+  // Render previous context banner if present
+  var _cc = state.activeCharId ? getCharConvo(state.activeCharId) : null;
+  var _chat = (_cc && state.activeChatId) ? _cc.chats[state.activeChatId] : null;
+  if (_chat && _chat.previousContext) {
+    var ctx = _chat.previousContext;
+    var banner = document.createElement('div');
+    banner.className = 'context-banner';
+    var headerTitle = ctx.title ? 'Previous Context: ' + escapeHtml(ctx.title) : 'Previous Context';
+    var memoryCards = Object.keys(ctx.characterMemories || {}).map(function(name) {
+      return '<div class="context-char-memory"><h5>' + escapeHtml(name) + '\'s Memories</h5>' +
+        '<div>' + formatMessage(ctx.characterMemories[name]) + '</div></div>';
+    }).join('');
+    banner.innerHTML =
+      '<div class="context-banner-header" onclick="toggleContextBanner(this)">' +
+        '<h4>' + headerTitle + '</h4>' +
+        '<button class="context-banner-toggle">&#9660;</button>' +
+      '</div>' +
+      '<div class="context-banner-body">' +
+        '<div class="context-summary">' + formatMessage(ctx.summary) + '</div>' +
+        memoryCards +
+        (ctx.sourceChat ? '<div class="context-banner-source">Source: "' + escapeHtml(ctx.sourceChat.title) + '" (' + ctx.sourceChat.messageCount + ' messages)</div>' : '') +
+      '</div>';
+    container.appendChild(banner);
+  }
 
   msgs.forEach(function(msg, idx) {
     var div = document.createElement('div');
@@ -1602,6 +1685,13 @@ function escapeRegExp(string) {
 
 function parseInputCommand(text) {
   const trimmed = text.trim();
+  // /n /u "Title" — upload previous context (must check BEFORE /n narration)
+  if (/^\/n\s+\/u/i.test(trimmed)) {
+    var titleMatch = trimmed.match(/^\/n\s+\/u\s+["'](.+?)["']\s*$/i);
+    if (!titleMatch) titleMatch = trimmed.match(/^\/n\s+\/u\s+(.+)$/i);
+    var contextTitle = titleMatch ? titleMatch[1].trim() : null;
+    return { type: 'uploadContext', contextTitle: contextTitle };
+  }
   if (trimmed.startsWith('/n ') || trimmed.startsWith('/N ')) {
     return { type: 'narration', content: trimmed.slice(3).trim() };
   }
@@ -1681,6 +1771,25 @@ function buildSystemPrompt(options) {
   var parts = [];
 
   if (state.globalSystemPrompt) parts.push(state.globalSystemPrompt);
+
+  // Inject previous chat context if available
+  var _ctxCC = state.activeCharId ? getCharConvo(state.activeCharId) : null;
+  var _ctxChat = (_ctxCC && state.activeChatId) ? _ctxCC.chats[state.activeChatId] : null;
+  if (_ctxChat && _ctxChat.previousContext) {
+    var prevCtx = _ctxChat.previousContext;
+    var ctxParts = ['[Previous Story Context]'];
+    if (prevCtx.title) ctxParts.push('Focus: ' + prevCtx.title);
+    ctxParts.push('Summary of previous events:\n' + prevCtx.summary);
+    var activeCharNames = activeChars.map(function(c) { return c.name; });
+    var memories = prevCtx.characterMemories || {};
+    activeCharNames.forEach(function(name) {
+      if (memories[name]) {
+        ctxParts.push(name + '\'s memories from the previous session:\n' + memories[name]);
+      }
+    });
+    ctxParts.push('Use this context to inform character responses. Characters should naturally recall past events when relevant, without forcing references into every response.');
+    parts.push(ctxParts.join('\n'));
+  }
 
   if (state.userCharacter.name || state.userCharacter.description) {
     var userSection = '[User Character]\n';
@@ -1791,7 +1900,12 @@ function addCharacterToChat(char) {
   }
   chat.activeCharacters.push(char.id);
   var msgs = getActiveMessages();
-  msgs.push({ role: 'system', content: char.name + ' has joined the conversation.' });
+  // Include character-specific memory from previous context if available
+  if (chat.previousContext && chat.previousContext.characterMemories && chat.previousContext.characterMemories[char.name]) {
+    msgs.push({ role: 'system', content: char.name + ' has joined the conversation. (Carries memories from: ' + (chat.previousContext.sourceChat ? chat.previousContext.sourceChat.title : 'previous chat') + ')' });
+  } else {
+    msgs.push({ role: 'system', content: char.name + ' has joined the conversation.' });
+  }
   saveConversations(); renderMessages(); renderActiveCharactersBar();
 }
 
@@ -1902,6 +2016,18 @@ async function sendMessage() {
 
   // Handle error
   if (cmd.type === 'error') { showSystemEvent(cmd.message); return; }
+
+  // Handle /n /u (upload previous context)
+  if (cmd.type === 'uploadContext') {
+    var msgs = getActiveMessages();
+    var realMsgCount = msgs.filter(function(m) { return m.role === 'user'; }).length;
+    if (realMsgCount > 0) {
+      showSystemEvent('Context upload must be done at the start of a new chat. Please create a new chat first.');
+      return;
+    }
+    openUploadContextModal(cmd.contextTitle);
+    return;
+  }
 
   // Handle narration /n
   if (cmd.type === 'narration') {
@@ -2153,6 +2279,7 @@ function exportChat(chatId) {
     characterName: ch ? ch.name : 'Unknown',
     chat: { title: chat.title, created: chat.created, messages: chat.messages }
   };
+  if (chat.previousContext) exportData.chat.previousContext = chat.previousContext;
   downloadJson(exportData, 'rpchat-chat-' + sanitizeFilename(chat.title || 'conversation') + '.json');
 }
 
@@ -2225,7 +2352,8 @@ function handleImportChatFile(event) {
       const cc = getCharConvo(state.activeCharId);
       const chatId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
       cc.chats[chatId] = { id: chatId, title: data.chat.title || 'Imported Chat',
-        created: data.chat.created || Date.now(), messages: data.chat.messages };
+        created: data.chat.created || Date.now(), messages: data.chat.messages,
+        previousContext: data.chat.previousContext || null };
       cc.activeChat = chatId; state.activeChatId = chatId;
       saveConversations(); renderMessages(); renderChatHistory();
       status.textContent = 'Imported "' + (data.chat.title || 'chat') + '" with ' + data.chat.messages.length + ' messages.';
@@ -2236,14 +2364,132 @@ function handleImportChatFile(event) {
   reader.readAsText(file);
 }
 
+// ─── Upload Context (Chat Continuity) ───
+function openUploadContextModal(presetTitle) {
+  document.getElementById('uploadContextFileInput').value = '';
+  document.getElementById('uploadContextStatus').textContent = '';
+  document.getElementById('contextTitleInput').value = presetTitle || '';
+  document.getElementById('uploadContextModal').classList.add('active');
+}
+function closeUploadContextModal() { document.getElementById('uploadContextModal').classList.remove('active'); }
+
+async function handleUploadContextFile(event) {
+  var file = event.target.files[0]; if (!file) return;
+  var status = document.getElementById('uploadContextStatus');
+  var chooseBtn = document.getElementById('uploadContextChooseBtn');
+  status.textContent = 'Reading file...'; status.style.color = 'var(--text-secondary)';
+
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      if (data._type !== 'rpchat_chat' || !data.chat || !data.chat.messages)
+        throw new Error('Not a valid RPChat chat export file.');
+      if (!state.apiKey) throw new Error('Please connect to OpenRouter first.');
+
+      var contextTitle = document.getElementById('contextTitleInput').value.trim();
+      var sourceMsgs = data.chat.messages;
+      var sourceTitle = data.chat.title || 'Unknown Chat';
+      if (sourceMsgs.length === 0) throw new Error('The uploaded chat has no messages.');
+
+      chooseBtn.disabled = true;
+      status.innerHTML = '<span style="color:var(--accent)">&#9881; Analyzing chat with AI... This may take a moment.</span>';
+
+      var previousContext = await summarizePreviousChat(sourceMsgs, contextTitle, sourceTitle);
+
+      var cc = getCharConvo(state.activeCharId);
+      var chat = cc.chats[state.activeChatId];
+      if (chat) { chat.previousContext = previousContext; saveConversations(); }
+
+      closeUploadContextModal();
+      renderMessages();
+      showSystemEvent('Previous context loaded: ' + (previousContext.title || 'General Summary') + ' (' + previousContext.sourceChat.messageCount + ' messages analyzed)');
+    } catch(err) {
+      status.textContent = 'Error: ' + err.message; status.style.color = 'var(--danger)';
+    } finally { chooseBtn.disabled = false; }
+  };
+  reader.onerror = function() { status.textContent = 'Error reading file.'; status.style.color = 'var(--danger)'; };
+  reader.readAsText(file);
+}
+
+async function summarizePreviousChat(messages, contextTitle, sourceChatTitle) {
+  var transcript = messages.map(function(m) {
+    if (m.role === 'system') return '[System: ' + m.content + ']';
+    if (m.isNarration) return '[Narration: ' + m.content + ']';
+    var name = m.charName || (m.role === 'user' ? (state.userCharacter.name || 'User') : 'AI');
+    return name + ': ' + m.content;
+  }).join('\n');
+
+  var maxLen = 30000;
+  if (transcript.length > maxLen) {
+    transcript = transcript.slice(0, maxLen) + '\n\n[...transcript truncated for length...]';
+  }
+
+  var charNames = [];
+  messages.forEach(function(m) {
+    if (m.charName && charNames.indexOf(m.charName) === -1) charNames.push(m.charName);
+  });
+
+  var focusInstruction = contextTitle
+    ? 'Focus your summary specifically on events, details, and character knowledge related to: "' + contextTitle + '". Prioritize information relevant to this topic.'
+    : 'Create a general summary covering all major events, revelations, and character developments.';
+
+  var summaryPrompt = 'You are a story analyst. Analyze the following roleplay chat transcript and produce a structured summary.\n\n' +
+    focusInstruction + '\n\n' +
+    'You MUST respond with valid JSON only, no markdown code fences. Use exactly this format:\n' +
+    '{"summary":"A 2-4 paragraph summary of the story so far, key events, and current situation.","characterMemories":{"CharName":"What this character knows, experienced, their emotional state, and important details they would remember.",...(one entry per character)}}\n\n' +
+    'Characters that appeared: ' + (charNames.length > 0 ? charNames.join(', ') : 'Unknown') + '\n\n' +
+    'Chat title: "' + sourceChatTitle + '"\n\nChat transcript:\n' + transcript;
+
+  var resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
+    body: JSON.stringify({
+      model: document.getElementById('modelSelect').value,
+      messages: [
+        { role: 'system', content: 'You are a precise story analyst. Always respond with valid JSON only, no markdown formatting or code fences.' },
+        { role: 'user', content: summaryPrompt }
+      ],
+      stream: false, temperature: 0.3, max_tokens: 2048
+    })
+  });
+
+  if (!resp.ok) throw new Error('API error ' + resp.status + ' while summarizing chat.');
+  var d = await resp.json();
+  var responseText = d.choices && d.choices[0] && d.choices[0].message ? d.choices[0].message.content : null;
+  if (!responseText) throw new Error('Empty response from AI summarization.');
+
+  var cleanJson = responseText.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+  // Strip <think>...</think> blocks
+  cleanJson = cleanJson.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  var parsed;
+  try { parsed = JSON.parse(cleanJson); }
+  catch(e) { parsed = { summary: responseText, characterMemories: {} }; }
+
+  return {
+    title: contextTitle || null,
+    summary: parsed.summary || responseText,
+    characterMemories: parsed.characterMemories || {},
+    sourceChat: { title: sourceChatTitle, messageCount: messages.length }
+  };
+}
+
+function toggleContextBanner(headerEl) {
+  var body = headerEl.nextElementSibling;
+  var arrow = headerEl.querySelector('.context-banner-toggle');
+  body.classList.toggle('open');
+  arrow.innerHTML = body.classList.contains('open') ? '&#9650;' : '&#9660;';
+}
+
 // ─── Modal close handlers ───
 document.getElementById('charModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeCharModal(); });
 document.getElementById('settingsModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeSettingsModal(); });
 document.getElementById('exportCharModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeExportCharModal(); });
 document.getElementById('importCharModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeImportCharModal(); });
 document.getElementById('importChatModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeImportChatModal(); });
+document.getElementById('uploadContextModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeUploadContextModal(); });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeCharModal(); closeSettingsModal(); closeExportCharModal(); closeImportCharModal(); closeImportChatModal(); closeContextMenu(); }
+  if (e.key === 'Escape') { closeCharModal(); closeSettingsModal(); closeExportCharModal(); closeImportCharModal(); closeImportChatModal(); closeUploadContextModal(); closeContextMenu(); }
 });
 
 // ─── Init ───
