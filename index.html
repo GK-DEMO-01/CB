@@ -1768,7 +1768,23 @@ function escapeRegExp(string) {
 
 function parseInputCommand(text) {
   const trimmed = text.trim();
-  // /n /u "Title" — upload previous context (must check BEFORE /n narration)
+  // /u — standalone upload & summarize previous chat (check BEFORE /n /u)
+  if (/^\/u(\s|$)/i.test(trimmed)) {
+    return { type: 'uploadContext', contextTitle: null };
+  }
+  // /l "language" or /l "language" @CharName — set response language
+  if (/^\/l\s/i.test(trimmed)) {
+    var langMatch = trimmed.match(/^\/l\s+["']?([^"'@]+?)["']?\s*(?:@(\S+))?\s*$/i);
+    if (langMatch) {
+      var lang = langMatch[1].trim();
+      var charPartial = langMatch[2] ? langMatch[2].trim() : null;
+      var targetChar = charPartial ? fuzzyMatchCharacter(charPartial) : null;
+      if (charPartial && !targetChar) return { type: 'error', message: 'No character found matching "' + charPartial + '"' };
+      return { type: 'setLanguage', language: lang, targetChar: targetChar };
+    }
+    return { type: 'error', message: 'Usage: /l "language" or /l "language" @CharName' };
+  }
+  // /n /u "Title" — upload previous context with topic focus (must check BEFORE /n narration)
   if (/^\/n\s+\/u/i.test(trimmed)) {
     var titleMatch = trimmed.match(/^\/n\s+\/u\s+["'](.+?)["']\s*$/i);
     if (!titleMatch) titleMatch = trimmed.match(/^\/n\s+\/u\s+(.+)$/i);
@@ -1880,6 +1896,20 @@ function buildSystemPrompt(options) {
     if (state.userCharacter.description) userSection += 'Description: ' + state.userCharacter.description + '\n';
     userSection += 'Address the user by this persona. The user\'s messages come from this character.';
     parts.push(userSection);
+  }
+
+  // Inject language instructions
+  if (_ctxChat) {
+    var langParts = [];
+    if (_ctxChat.language) {
+      langParts.push('[Language Instruction]\nAll characters MUST respond in ' + _ctxChat.language + '. This applies to all dialogue, narration, and actions.');
+    }
+    if (_ctxChat.characterLanguages) {
+      Object.keys(_ctxChat.characterLanguages).forEach(function(charName) {
+        langParts.push(charName + ' MUST respond in ' + _ctxChat.characterLanguages[charName] + '.');
+      });
+    }
+    if (langParts.length > 0) parts.push(langParts.join('\n'));
   }
 
   if (isMultiChar) {
@@ -2050,19 +2080,43 @@ function updateCommandHint(text) {
   if (!hint) return;
   var trimmed = text.trim();
 
-  // "/" or partial "/" command — show command menu
-  if (trimmed === '/' || (trimmed.startsWith('/') && !trimmed.startsWith('/n'))) {
-    hint.innerHTML =
-      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'/n\')">' +
-        '<span class="command-hint-cmd">/n</span><span class="command-hint-desc">Narrate an action or scene</span></div>' +
-      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'/n /u\')">' +
-        '<span class="command-hint-cmd">/n /u</span><span class="command-hint-desc">Load context from a previous chat</span></div>' +
-      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'+\')">' +
-        '<span class="command-hint-cmd">+</span><span class="command-hint-desc">Add a character to this chat</span></div>' +
-      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'-\')">' +
-        '<span class="command-hint-cmd">\u2212</span><span class="command-hint-desc">Remove a character from this chat</span></div>' +
-      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'@\')">' +
-        '<span class="command-hint-cmd">@</span><span class="command-hint-desc">Direct a specific character to respond</span></div>';
+  // Hide hint when user is typing /l, /u, or /n content (not just "/" alone)
+  if (/^\/(l|u)\S*/i.test(trimmed) && trimmed.length > 1) {
+    hint.classList.remove('visible'); hint.innerHTML = ''; return;
+  }
+  if (/^\/n\s/i.test(trimmed)) {
+    hint.classList.remove('visible'); hint.innerHTML = ''; return;
+  }
+
+  // "/" or just "/" — context-aware command menu
+  if (trimmed === '/') {
+    var activeCharIds = getActiveCharacters();
+    var removableCount = activeCharIds.length > 1 ? activeCharIds.filter(function(id) { return id !== state.activeCharId; }).length : 0;
+    var addableCount = state.characters.filter(function(c) { return activeCharIds.indexOf(c.id) === -1; }).length;
+    var msgs = getActiveMessages();
+    var hasUserMessages = msgs.some(function(m) { return m.role === 'user'; });
+
+    var items = '';
+    items += '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'/n\')">' +
+      '<span class="command-hint-cmd">/n</span><span class="command-hint-desc">Narrate an action or scene</span></div>';
+    if (!hasUserMessages) {
+      items += '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'/u\')">' +
+        '<span class="command-hint-cmd">/u</span><span class="command-hint-desc">Load & summarize a previous chat</span></div>';
+    }
+    items += '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'/l\')">' +
+      '<span class="command-hint-cmd">/l</span><span class="command-hint-desc">Set response language</span></div>';
+    if (addableCount > 0) {
+      items += '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'+\')">' +
+        '<span class="command-hint-cmd">+</span><span class="command-hint-desc">Add a character to this chat</span></div>';
+    }
+    if (removableCount > 0) {
+      items += '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'-\')">' +
+        '<span class="command-hint-cmd">\u2212</span><span class="command-hint-desc">Remove a character from this chat</span></div>';
+    }
+    items += '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'@\')">' +
+      '<span class="command-hint-cmd">@</span><span class="command-hint-desc">Direct a character to respond</span></div>';
+
+    hint.innerHTML = items;
     hint.classList.add('visible');
     return;
   }
@@ -2129,7 +2183,8 @@ function applyCommandHint(type, value) {
   var input = document.getElementById('userInput');
   var hint = document.getElementById('commandHint');
   if (value === '/n') { input.value = '/n '; hint.classList.remove('visible'); }
-  else if (value === '/n /u') { input.value = '/n /u "'; hint.classList.remove('visible'); }
+  else if (value === '/u') { input.value = '/u'; hint.classList.remove('visible'); }
+  else if (value === '/l') { input.value = '/l "'; hint.classList.remove('visible'); }
   else {
     // +, -, @ — set prefix and show character list
     input.value = value;
@@ -2178,6 +2233,22 @@ async function sendMessage() {
       return;
     }
     openUploadContextModal(cmd.contextTitle);
+    return;
+  }
+
+  // Handle /l (set language)
+  if (cmd.type === 'setLanguage') {
+    var cc = getCharConvo(state.activeCharId);
+    var chat = cc.chats[state.activeChatId];
+    if (cmd.targetChar) {
+      if (!chat.characterLanguages) chat.characterLanguages = {};
+      chat.characterLanguages[cmd.targetChar.name] = cmd.language;
+      showSystemEvent(cmd.targetChar.name + ' will now respond in ' + cmd.language + '.');
+    } else {
+      chat.language = cmd.language;
+      showSystemEvent('All characters will now respond in ' + cmd.language + '.');
+    }
+    saveConversations();
     return;
   }
 
