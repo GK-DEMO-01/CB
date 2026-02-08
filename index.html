@@ -499,6 +499,66 @@
   }
   .import-btn-inline:hover { color: var(--accent); }
 
+  /* ─── Active Characters Bar ─── */
+  .active-chars-bar {
+    display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    padding: 6px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary); min-height: 0;
+  }
+  .active-chars-bar:empty { display: none; }
+  .active-char-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px 3px 6px; border-radius: 20px;
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .active-char-chip .chip-avatar {
+    width: 18px; height: 18px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; overflow: hidden;
+  }
+  .active-char-chip .chip-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .active-char-chip.primary { border-color: var(--accent); color: var(--accent); }
+  .active-char-chip .chip-remove {
+    margin-left: 2px; cursor: pointer; font-size: 10px;
+    color: var(--text-muted); background: none; border: none;
+    padding: 0; width: 14px; height: 14px; display: flex;
+    align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .active-char-chip .chip-remove:hover { color: var(--danger); }
+
+  /* ─── Narration Message ─── */
+  .message.narration {
+    background: transparent; align-self: center; text-align: center;
+    max-width: 90%; font-style: italic; color: var(--text-secondary);
+    border: 1px dashed var(--border); padding: 10px 18px; margin: 8px auto;
+  }
+  .message.narration .sender { color: var(--text-muted); font-size: 11px; }
+
+  /* ─── System Event Message ─── */
+  .message.system-event {
+    background: transparent; align-self: center; text-align: center;
+    max-width: 80%; color: var(--text-muted); font-size: 12px;
+    padding: 6px 12px; margin: 4px auto;
+  }
+
+  /* ─── Command Hint Popup ─── */
+  .command-hint {
+    position: absolute; bottom: 100%; left: 0; right: 0;
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px; margin-bottom: 4px;
+    font-size: 13px; color: var(--text-secondary);
+    display: none; z-index: 10; max-height: 200px; overflow-y: auto;
+  }
+  .command-hint.visible { display: block; }
+  .command-hint-item {
+    padding: 8px 10px; border-radius: 6px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .command-hint-item:hover, .command-hint-item:active { background: var(--bg-tertiary); }
+
   /* ─── Responsive ─── */
   @media (max-width: 768px) {
     .sidebar { position: absolute; z-index: 100; height: 100%; transform: translateX(-320px); }
@@ -584,14 +644,17 @@
       <p>Create a character from the sidebar or select an existing one to start your adventure.</p>
     </div>
 
+    <div class="active-chars-bar" id="activeCharsBar"></div>
+
     <div id="chatView" style="display:none;flex:1;flex-direction:column;min-height:0;">
       <div class="messages" id="messages"></div>
       <div class="typing-indicator" id="typingIndicator">
         <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
       </div>
-      <div class="input-area">
+      <div class="input-area" style="position:relative;">
+        <div class="command-hint" id="commandHint"></div>
         <div class="input-wrapper">
-          <textarea id="userInput" placeholder="Type your message... (Enter to send, Shift+Enter for new line)" rows="1" onkeydown="handleInputKey(event)"></textarea>
+          <textarea id="userInput" placeholder="Type your message... (+ add char, - remove, @ mention, /n narrate)" rows="1" onkeydown="handleInputKey(event)"></textarea>
           <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#9654;</button>
         </div>
       </div>
@@ -671,6 +734,17 @@
       <button class="modal-close-btn" onclick="closeSettingsModal()" aria-label="Close">&#10005;</button>
     </div>
     <div class="modal-body">
+    <div class="form-group">
+      <label>Your Character Name</label>
+      <input type="text" id="userCharNameInput" placeholder="e.g. Alex, The Wanderer, Mom..." maxlength="40" style="width:100%;padding:10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:14px;">
+      <p class="form-hint">The name AI characters will know you by. Leave blank to be "You".</p>
+    </div>
+    <div class="form-group">
+      <label>Your Character Description</label>
+      <textarea id="userCharDescInput" rows="3" placeholder="e.g. A curious adventurer from the northern kingdoms. Brave but cautious..."></textarea>
+      <p class="form-hint">Context about your persona that AI characters will see in every conversation.</p>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;">
     <div class="form-group">
       <label>Global System Prompt</label>
       <textarea id="globalPromptInput" rows="5" placeholder="e.g. Keep responses under 200 words. Always respond in English. Use vivid descriptions..."></textarea>
@@ -772,7 +846,8 @@ let state = {
   selectedAvatarImage: null, // base64 data URL
   globalSystemPrompt: '',
   isStreaming: false,
-  editingMsgIndex: null
+  editingMsgIndex: null,
+  userCharacter: { name: '', description: '' }
 };
 
 // ═══════════════════════════════════════
@@ -898,10 +973,15 @@ function loadData() {
 
   // Global prompt
   state.globalSystemPrompt = localStorage.getItem('rpchat_global_prompt') || '';
+
+  // User character
+  const uc = localStorage.getItem('rpchat_user_character');
+  state.userCharacter = uc ? JSON.parse(uc) : { name: '', description: '' };
 }
 
 function saveCharacters() { localStorage.setItem('rpchat_characters', JSON.stringify(state.characters)); }
 function saveConversations() { localStorage.setItem('rpchat_conversations', JSON.stringify(state.conversations)); }
+function saveUserCharacter() { localStorage.setItem('rpchat_user_character', JSON.stringify(state.userCharacter)); }
 
 // ─── Conversation helpers ───
 function getCharConvo(charId) {
@@ -968,7 +1048,7 @@ function selectCharacter(charId) {
     state.activeChatId = cc.activeChat;
   }
 
-  renderMessages(); renderCharList(); renderChatHistory();
+  renderMessages(); renderCharList(); renderChatHistory(); renderActiveCharactersBar();
 
   // Auto-close sidebar on mobile after selecting a character
   if (window.innerWidth <= 768) {
@@ -989,11 +1069,11 @@ function newChat() {
   const chatId = 'chat_' + Date.now();
   const cc = getCharConvo(state.activeCharId);
   const msgs = [];
-  if (ch && ch.greeting) msgs.push({ role: 'assistant', content: ch.greeting });
-  cc.chats[chatId] = { id: chatId, title: 'New Conversation', created: Date.now(), messages: msgs };
+  if (ch && ch.greeting) msgs.push({ role: 'assistant', content: ch.greeting, charId: ch.id, charName: ch.name });
+  cc.chats[chatId] = { id: chatId, title: 'New Conversation', created: Date.now(), messages: msgs, activeCharacters: [state.activeCharId] };
   cc.activeChat = chatId;
   state.activeChatId = chatId;
-  saveConversations(); renderMessages(); renderChatHistory();
+  saveConversations(); renderMessages(); renderChatHistory(); renderActiveCharactersBar();
   if (window.innerWidth <= 768) {
     const s = document.getElementById('sidebar');
     s.classList.remove('open'); s.classList.add('collapsed');
@@ -1006,7 +1086,7 @@ function selectChat(chatId) {
   if (!cc.chats[chatId]) return;
   cc.activeChat = chatId;
   state.activeChatId = chatId;
-  saveConversations(); renderMessages(); renderChatHistory();
+  saveConversations(); renderMessages(); renderChatHistory(); renderActiveCharactersBar();
   if (window.innerWidth <= 768) {
     const s = document.getElementById('sidebar');
     s.classList.remove('open'); s.classList.add('collapsed');
@@ -1051,25 +1131,61 @@ function renderChatHistory() {
 //  Messages
 // ═══════════════════════════════════════
 function renderMessages() {
-  const container = document.getElementById('messages');
-  const msgs = getActiveMessages();
-  const ch = state.characters.find(c => c.id === state.activeCharId);
+  var container = document.getElementById('messages');
+  var msgs = getActiveMessages();
+  var primaryChar = state.characters.find(function(c) { return c.id === state.activeCharId; });
   container.innerHTML = '';
 
-  msgs.forEach((msg, idx) => {
-    const div = document.createElement('div');
+  msgs.forEach(function(msg, idx) {
+    var div = document.createElement('div');
+
+    // System events (join/leave)
+    if (msg.role === 'system') {
+      div.className = 'message system-event';
+      div.textContent = msg.content;
+      container.appendChild(div);
+      return;
+    }
+
+    // Narration
+    if (msg.isNarration) {
+      div.className = 'message narration new';
+      div.innerHTML = '<div class="sender">Narrator</div>' +
+        '<div class="content">' + formatMessage(msg.content) + '</div>';
+      container.appendChild(div);
+      return;
+    }
+
     div.className = 'message ' + msg.role + ' new';
     div.setAttribute('data-idx', idx);
-    const senderName = msg.role === 'user' ? 'You' : (ch ? ch.name : 'AI');
+
+    var senderName, senderColor = null, senderChar;
+    if (msg.role === 'user') {
+      senderName = state.userCharacter.name || 'You';
+    } else {
+      if (msg.charId) {
+        senderChar = state.characters.find(function(c) { return c.id === msg.charId; });
+        senderName = senderChar ? senderChar.name : (msg.charName || 'AI');
+      } else if (msg.charName) {
+        senderChar = state.characters.find(function(c) { return c.name === msg.charName; });
+        senderName = msg.charName;
+      } else {
+        senderChar = primaryChar;
+        senderName = primaryChar ? primaryChar.name : 'AI';
+      }
+      senderColor = senderChar ? senderChar.color : null;
+    }
+
+    var senderStyle = senderColor ? ' style="color:' + senderColor + '"' : '';
 
     if (state.editingMsgIndex === idx) {
-      div.innerHTML = '<div class="sender">' + escapeHtml(senderName) + '</div>' +
+      div.innerHTML = '<div class="sender"' + senderStyle + '>' + escapeHtml(senderName) + '</div>' +
         '<div class="edit-area"><textarea id="editMsgTextarea">' + escapeHtml(msg.content) + '</textarea>' +
         '<div class="edit-actions"><button class="btn btn-secondary btn-sm" onclick="cancelEdit()">Cancel</button>' +
         '<button class="btn btn-primary btn-sm" onclick="saveEdit('+idx+')">Save</button></div></div>';
     } else {
-      const actions = '<div class="message-actions"><button class="msg-action-btn" onclick="startEdit('+idx+')" title="Edit">&#9998;</button></div>';
-      div.innerHTML = actions + '<div class="sender">' + escapeHtml(senderName) + '</div>' +
+      var actions = '<div class="message-actions"><button class="msg-action-btn" onclick="startEdit('+idx+')" title="Edit">&#9998;</button></div>';
+      div.innerHTML = actions + '<div class="sender"' + senderStyle + '>' + escapeHtml(senderName) + '</div>' +
         '<div class="content">' + formatMessage(msg.content) + '</div>';
     }
     container.appendChild(div);
@@ -1115,55 +1231,69 @@ function saveEdit(idx) {
 
 async function regenerateFrom() {
   if (state.isStreaming || !state.activeCharId || !state.activeChatId) return;
-  const ch = state.characters.find(c => c.id === state.activeCharId); if (!ch) return;
-  const msgs = getActiveMessages();
+  var ch = state.characters.find(function(c) { return c.id === state.activeCharId; });
+  if (!ch) return;
+  var msgs = getActiveMessages();
 
-  const rpFormatRule = '\n\n[Formatting rules: Always wrap actions, thoughts, descriptions, and narration in *single asterisks* for italic styling. Dialogue should be in "double quotes" without asterisks. Keep dialogue as regular text. Example: *She looks up nervously* "Hello there." *her hands trembling slightly*]';
-  let sysContent = ch.prompt + rpFormatRule;
-  if (state.globalSystemPrompt) sysContent = state.globalSystemPrompt + '\n\n' + sysContent;
-  const apiMessages = [{ role: 'system', content: sysContent }, ...msgs.map(m => ({ role: m.role, content: m.content }))];
+  var sysContent = buildSystemPrompt();
+  var apiMessages = [{ role: 'system', content: sysContent }].concat(buildApiMessages(msgs));
 
   state.isStreaming = true;
   document.getElementById('sendBtn').disabled = true;
   document.getElementById('typingIndicator').classList.add('active');
 
   try {
-    const resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
+    var resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
-      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, temperature: 0.85, max_tokens: 1024 })
+      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, temperature: 0.85, max_tokens: 2048 })
     });
-    if (!resp.ok) { const et = await resp.text(); throw new Error('API error ' + resp.status + ': ' + et); }
+    if (!resp.ok) { var et = await resp.text(); throw new Error('API error ' + resp.status + ': ' + et); }
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let aMsg = '', buffer = '';
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var fullResponse = '', buffer = '';
     msgs.push({ role: 'assistant', content: '' });
-    const mi = msgs.length - 1;
+    var tempIdx = msgs.length - 1;
     document.getElementById('typingIndicator').classList.remove('active');
     renderMessages();
 
     while (true) {
-      const { done, value } = await reader.read(); if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n'); buffer = lines.pop() || '';
-      for (const line of lines) {
-        const tr = line.trim();
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      var lines = buffer.split('\n'); buffer = lines.pop() || '';
+      for (var i = 0; i < lines.length; i++) {
+        var tr = lines[i].trim();
         if (!tr || !tr.startsWith('data: ')) continue;
-        const data = tr.slice(6); if (data === '[DONE]') continue;
+        var data = tr.slice(6); if (data === '[DONE]') continue;
         try {
-          const p = JSON.parse(data);
-          const delta = p.choices?.[0]?.delta?.content;
-          if (delta) { aMsg += delta; msgs[mi].content = aMsg; updateStreamingContent(aMsg); }
+          var p = JSON.parse(data);
+          var delta = p.choices && p.choices[0] && p.choices[0].delta ? p.choices[0].delta.content : null;
+          if (delta) { fullResponse += delta; msgs[tempIdx].content = fullResponse; updateStreamingContent(fullResponse); }
         } catch(e) {}
       }
     }
-    saveConversations();
+
+    // Post-stream: parse multi-character responses
+    var activeIds = getActiveCharacters();
+    if (activeIds.length > 1) {
+      var parsed = parseMultiCharResponse(fullResponse, activeIds);
+      msgs.splice(tempIdx, 1);
+      parsed.forEach(function(block) {
+        msgs.push({ role: 'assistant', content: block.content, charId: block.charId, charName: block.charName });
+      });
+    } else {
+      msgs[tempIdx].charId = state.activeCharId;
+      msgs[tempIdx].charName = ch ? ch.name : null;
+    }
+
+    saveConversations(); renderMessages();
   } catch(err) {
     document.getElementById('typingIndicator').classList.remove('active');
-    const ms = getActiveMessages();
+    var ms = getActiveMessages();
     if (ms.length && ms[ms.length-1].role === 'assistant' && !ms[ms.length-1].content) ms.pop();
-    const ed = document.createElement('div'); ed.className = 'message assistant';
+    var ed = document.createElement('div'); ed.className = 'message assistant';
     ed.innerHTML = '<div class="sender" style="color:var(--danger)">Error</div><div class="content" style="color:var(--danger)">' + escapeHtml(err.message) + '</div>';
     document.getElementById('messages').appendChild(ed);
     scrollToBottom();
@@ -1426,33 +1556,381 @@ function setAiGenStatus(m, t) {
 // ═══════════════════════════════════════
 function openSettingsModal() {
   document.getElementById('globalPromptInput').value = state.globalSystemPrompt;
+  document.getElementById('userCharNameInput').value = state.userCharacter.name;
+  document.getElementById('userCharDescInput').value = state.userCharacter.description;
   document.getElementById('settingsModal').classList.add('active');
 }
 function closeSettingsModal() { document.getElementById('settingsModal').classList.remove('active'); }
 function saveSettings() {
   state.globalSystemPrompt = document.getElementById('globalPromptInput').value.trim();
   localStorage.setItem('rpchat_global_prompt', state.globalSystemPrompt);
+  state.userCharacter.name = document.getElementById('userCharNameInput').value.trim();
+  state.userCharacter.description = document.getElementById('userCharDescInput').value.trim();
+  saveUserCharacter();
   closeSettingsModal();
+  renderMessages(); // refresh sender names
+}
+
+// ═══════════════════════════════════════
+//  Multi-Character Helpers
+// ═══════════════════════════════════════
+
+function getActiveCharacters() {
+  if (!state.activeCharId || !state.activeChatId) return [];
+  const cc = getCharConvo(state.activeCharId);
+  const chat = cc.chats[state.activeChatId];
+  if (!chat) return [];
+  if (!chat.activeCharacters || chat.activeCharacters.length === 0) {
+    chat.activeCharacters = [state.activeCharId];
+  }
+  return chat.activeCharacters;
+}
+
+function fuzzyMatchCharacter(partial) {
+  const lower = partial.toLowerCase();
+  let match = state.characters.find(c => c.name.toLowerCase() === lower);
+  if (match) return match;
+  match = state.characters.find(c => c.name.toLowerCase().startsWith(lower));
+  if (match) return match;
+  match = state.characters.find(c => c.name.toLowerCase().includes(lower));
+  return match || null;
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseInputCommand(text) {
+  const trimmed = text.trim();
+  if (trimmed.startsWith('/n ') || trimmed.startsWith('/N ')) {
+    return { type: 'narration', content: trimmed.slice(3).trim() };
+  }
+  if (/^\+\S/.test(trimmed)) {
+    const partial = trimmed.slice(1).trim();
+    const match = fuzzyMatchCharacter(partial);
+    if (match) return { type: 'addChar', char: match, raw: trimmed };
+    return { type: 'error', message: 'No character found matching "' + partial + '"' };
+  }
+  if (/^-\S/.test(trimmed)) {
+    const partial = trimmed.slice(1).trim();
+    const match = fuzzyMatchCharacter(partial);
+    if (match) return { type: 'removeChar', char: match, raw: trimmed };
+    return { type: 'error', message: 'No character found matching "' + partial + '"' };
+  }
+  // Check for @ mentions — can be multiple: @Name (text) @Name2 (text)
+  const atMatches = [];
+  const atRegex = /@(\S+?)(?:\s*\(([^)]*)\))?(?=\s*@|\s*$)/g;
+  let atTest = atRegex.exec(trimmed);
+  while (atTest) {
+    const match = fuzzyMatchCharacter(atTest[1]);
+    if (match) atMatches.push({ char: match, instructions: (atTest[2] || '').trim() });
+    atTest = atRegex.exec(trimmed);
+  }
+  if (atMatches.length > 0) {
+    // Also capture any trailing text not in the @ pattern as general instructions
+    const remaining = trimmed.replace(atRegex, '').trim();
+    return { type: 'mention', mentions: atMatches, remaining: remaining, raw: trimmed };
+  }
+  return { type: 'message', content: trimmed };
+}
+
+function showSystemEvent(text) {
+  const msgs = getActiveMessages();
+  msgs.push({ role: 'system', content: text });
+  saveConversations();
+  renderMessages();
+}
+
+function renderActiveCharactersBar() {
+  const bar = document.getElementById('activeCharsBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  if (!state.activeCharId || !state.activeChatId) return;
+  const activeIds = getActiveCharacters();
+  if (activeIds.length <= 1) return; // hide bar for single-char chats
+  activeIds.forEach(function(cid) {
+    const ch = state.characters.find(function(c) { return c.id === cid; });
+    if (!ch) return;
+    const isPrimary = cid === state.activeCharId;
+    const chip = document.createElement('div');
+    chip.className = 'active-char-chip' + (isPrimary ? ' primary' : '');
+    const avatarHtml = ch.avatarImage
+      ? '<div class="chip-avatar"><img src="'+ch.avatarImage+'" alt=""></div>'
+      : '<div class="chip-avatar" style="background:'+ch.color+'22;color:'+ch.color+'">'+ch.emoji+'</div>';
+    let removeBtn = '';
+    if (!isPrimary) {
+      removeBtn = '<button class="chip-remove" onclick="event.stopPropagation();removeCharacterFromChat(\''+cid+'\')" title="Remove">&times;</button>';
+    }
+    chip.innerHTML = avatarHtml + '<span>' + escapeHtml(ch.name) + '</span>' + removeBtn;
+    bar.appendChild(chip);
+  });
+}
+
+function buildSystemPrompt(options) {
+  options = options || {};
+  var forcedCharIds = options.forcedCharIds;
+  var isRemoval = options.isRemoval;
+  var removingChar = options.removingChar;
+
+  const activeIds = getActiveCharacters();
+  const activeChars = activeIds.map(function(id) { return state.characters.find(function(c) { return c.id === id; }); }).filter(Boolean);
+  const isMultiChar = activeChars.length > 1;
+
+  const rpFormatRule = '\n\n[Formatting rules: Always wrap actions, thoughts, descriptions, and narration in *single asterisks* for italic styling. Dialogue should be in "double quotes" without asterisks. Keep dialogue as regular text. Example: *She looks up nervously* "Hello there." *her hands trembling slightly*]';
+
+  var parts = [];
+
+  if (state.globalSystemPrompt) parts.push(state.globalSystemPrompt);
+
+  if (state.userCharacter.name || state.userCharacter.description) {
+    var userSection = '[User Character]\n';
+    if (state.userCharacter.name) userSection += 'The user\'s name/persona is: ' + state.userCharacter.name + '.\n';
+    if (state.userCharacter.description) userSection += 'Description: ' + state.userCharacter.description + '\n';
+    userSection += 'Address the user by this persona. The user\'s messages come from this character.';
+    parts.push(userSection);
+  }
+
+  if (isMultiChar) {
+    parts.push('[Multi-Character Scene]\nThis is a multi-character roleplay. The following characters are present in this scene:\n');
+    activeChars.forEach(function(ch) {
+      parts.push('--- ' + ch.name + ' ---\n' + ch.prompt);
+    });
+    parts.push(
+      '\n[Multi-Character Response Rules]\n' +
+      '- IMPORTANT: Each character\'s response MUST start on a new line with their name in this exact format: [CharacterFullName]: followed by their response.\n' +
+      '- Multiple characters can respond to a single user message. Separate each character\'s block with a blank line.\n' +
+      '- Only characters who would naturally respond in context should speak. Not every character must respond every time.\n' +
+      '- Stay in character for each. Different characters have different speech patterns, knowledge, and personalities.\n' +
+      '- Example format:\n' +
+      '[' + activeChars[0].name + ']: *strokes beard thoughtfully* "That is an interesting question."\n\n' +
+      (activeChars[1] ? '[' + activeChars[1].name + ']: *laughs from the corner* "What he means is, you\'re in over your head."' : '')
+    );
+
+    if (forcedCharIds && forcedCharIds.length > 0) {
+      var forcedNames = forcedCharIds.map(function(id) {
+        var c = state.characters.find(function(ch) { return ch.id === id; });
+        return c ? c.name : null;
+      }).filter(Boolean);
+      if (forcedNames.length > 0) {
+        parts.push('\n[IMPORTANT: The user has specifically directed ' + forcedNames.join(' and ') + ' to respond. Make sure ' + (forcedNames.length === 1 ? 'this character responds' : 'these characters respond') + '.]');
+      }
+    }
+
+    if (isRemoval && removingChar) {
+      parts.push('\n[IMPORTANT: ' + removingChar.name + ' is leaving the scene. Write a brief, in-character exit for ' + removingChar.name + '. Other present characters may react briefly.]');
+    }
+  } else {
+    parts.push(activeChars[0] ? activeChars[0].prompt : '');
+  }
+
+  parts.push(rpFormatRule);
+  return parts.join('\n\n');
+}
+
+function buildApiMessages(msgs) {
+  var apiMsgs = [];
+  msgs.forEach(function(m) {
+    if (m.role === 'system') return; // skip join/leave events from API context
+    if (m.isNarration) {
+      apiMsgs.push({ role: 'system', content: '[Narration]: ' + m.content });
+    } else if (m.charId && m.role === 'assistant') {
+      apiMsgs.push({ role: 'assistant', content: '[' + (m.charName || 'Unknown') + ']: ' + m.content });
+    } else {
+      apiMsgs.push({ role: m.role, content: m.content });
+    }
+  });
+  return apiMsgs;
+}
+
+function parseMultiCharResponse(responseText, activeCharIds) {
+  var activeChars = activeCharIds.map(function(id) { return state.characters.find(function(c) { return c.id === id; }); }).filter(Boolean);
+
+  if (activeChars.length <= 1) {
+    return [{ charId: activeChars[0] ? activeChars[0].id : null, charName: activeChars[0] ? activeChars[0].name : null, content: responseText.trim() }];
+  }
+
+  var charNames = activeChars.map(function(c) { return c.name; });
+  var namePattern = charNames.map(escapeRegExp).join('|');
+  var regex = new RegExp('^\\s*\\[?(' + namePattern + ')\\]?\\s*:', 'gmi');
+
+  var splits = [];
+  var lastChar = null;
+  var lastIndex = 0;
+  var match;
+
+  while ((match = regex.exec(responseText)) !== null) {
+    if (lastChar !== null) {
+      splits.push({ charName: lastChar, content: responseText.slice(lastIndex, match.index).trim() });
+    }
+    lastChar = match[1];
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastChar !== null) {
+    splits.push({ charName: lastChar, content: responseText.slice(lastIndex).trim() });
+  }
+
+  if (splits.length > 0) {
+    return splits.map(function(s) {
+      var ch = activeChars.find(function(c) { return c.name.toLowerCase() === s.charName.toLowerCase(); });
+      return { charId: ch ? ch.id : null, charName: s.charName, content: s.content };
+    });
+  }
+
+  return [{ charId: activeChars[0].id, charName: activeChars[0].name, content: responseText.trim() }];
+}
+
+function addCharacterToChat(char) {
+  if (!state.activeChatId || !state.activeCharId) return;
+  var cc = getCharConvo(state.activeCharId);
+  var chat = cc.chats[state.activeChatId];
+  if (!chat) return;
+  if (!chat.activeCharacters) chat.activeCharacters = [state.activeCharId];
+  if (chat.activeCharacters.includes(char.id)) {
+    showSystemEvent(char.name + ' is already in this conversation.');
+    return;
+  }
+  chat.activeCharacters.push(char.id);
+  var msgs = getActiveMessages();
+  msgs.push({ role: 'system', content: char.name + ' has joined the conversation.' });
+  saveConversations(); renderMessages(); renderActiveCharactersBar();
+}
+
+function removeCharacterFromChat(charId) {
+  var ch = state.characters.find(function(c) { return c.id === charId; });
+  if (ch) removeCharacterFromChatWithExit(ch);
+}
+
+async function removeCharacterFromChatWithExit(char) {
+  if (!state.activeChatId || !state.activeCharId) return;
+  var cc = getCharConvo(state.activeCharId);
+  var chat = cc.chats[state.activeChatId];
+  if (!chat || !chat.activeCharacters) return;
+  if (!chat.activeCharacters.includes(char.id)) {
+    showSystemEvent(char.name + ' is not in this conversation.');
+    return;
+  }
+  if (char.id === state.activeCharId) {
+    showSystemEvent('Cannot remove the primary character.');
+    return;
+  }
+
+  var msgs = getActiveMessages();
+  var sysContent = buildSystemPrompt({ isRemoval: true, removingChar: char });
+  var apiMsgs = [{ role: 'system', content: sysContent }].concat(buildApiMessages(msgs));
+  apiMsgs.push({ role: 'user', content: '[' + char.name + ' is leaving the scene. Write their brief in-character exit.]' });
+
+  state.isStreaming = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('typingIndicator').classList.add('active');
+
+  try {
+    var resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
+      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMsgs, stream: false, temperature: 0.85, max_tokens: 512 })
+    });
+    if (!resp.ok) throw new Error('API error ' + resp.status);
+    var d = await resp.json();
+    var exitContent = d.choices && d.choices[0] && d.choices[0].message ? d.choices[0].message.content : '*' + char.name + ' exits quietly.*';
+    // Strip the [CharName]: prefix if present
+    exitContent = exitContent.replace(new RegExp('^\\s*\\[?' + escapeRegExp(char.name) + '\\]?\\s*:', 'i'), '').trim();
+    msgs.push({ role: 'assistant', content: exitContent, charId: char.id, charName: char.name });
+  } catch(e) {
+    msgs.push({ role: 'assistant', content: '*' + char.name + ' leaves the scene.*', charId: char.id, charName: char.name });
+  } finally {
+    state.isStreaming = false;
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('typingIndicator').classList.remove('active');
+  }
+
+  chat.activeCharacters = chat.activeCharacters.filter(function(id) { return id !== char.id; });
+  msgs.push({ role: 'system', content: char.name + ' has left the conversation.' });
+  saveConversations(); renderMessages(); renderActiveCharactersBar();
+}
+
+function updateCommandHint(text) {
+  var hint = document.getElementById('commandHint');
+  if (!hint) return;
+  var trimmed = text.trim();
+  var prefix = null, partial = '';
+  if (/^\+\S*$/.test(trimmed) && trimmed.length > 1) { prefix = '+'; partial = trimmed.slice(1); }
+  else if (/^-\S*$/.test(trimmed) && trimmed.length > 1) { prefix = '-'; partial = trimmed.slice(1); }
+  else if (/^@\S*$/.test(trimmed) && trimmed.length > 1) { prefix = '@'; partial = trimmed.slice(1); }
+  if (!prefix || !partial) { hint.classList.remove('visible'); hint.innerHTML = ''; return; }
+  var lower = partial.toLowerCase();
+  var matches = state.characters.filter(function(c) {
+    return c.name.toLowerCase().startsWith(lower) || c.name.toLowerCase().includes(lower);
+  }).slice(0, 5);
+  if (matches.length === 0) { hint.classList.remove('visible'); hint.innerHTML = ''; return; }
+  hint.innerHTML = matches.map(function(ch) {
+    var avatarHtml = ch.avatarImage
+      ? '<img src="'+ch.avatarImage+'" style="width:20px;height:20px;border-radius:50%;object-fit:cover;" alt="">'
+      : '<span style="color:'+ch.color+'">'+ch.emoji+'</span>';
+    return '<div class="command-hint-item" onclick="applyCommandHint(\''+prefix+'\',\''+ch.name.replace(/'/g, "\\'")+'\')">' +
+      avatarHtml + '<span>' + escapeHtml(ch.name) + '</span></div>';
+  }).join('');
+  hint.classList.add('visible');
+}
+
+function applyCommandHint(prefix, charName) {
+  var input = document.getElementById('userInput');
+  if (prefix === '@') { input.value = '@' + charName + ' '; }
+  else { input.value = prefix + charName; }
+  document.getElementById('commandHint').classList.remove('visible');
+  input.focus();
 }
 
 // ═══════════════════════════════════════
 //  Chat / API
 // ═══════════════════════════════════════
-function handleInputKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+function handleInputKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  if (e.key === 'Escape') { var h = document.getElementById('commandHint'); if (h) h.classList.remove('visible'); }
+}
 
 async function sendMessage() {
   if (state.isStreaming || !state.activeCharId || !state.activeChatId) return;
-  const input = document.getElementById('userInput');
-  const text = input.value.trim(); if (!text) return;
-  const ch = state.characters.find(c => c.id === state.activeCharId); if (!ch) return;
+  var input = document.getElementById('userInput');
+  var text = input.value.trim(); if (!text) return;
 
-  const msgs = getActiveMessages();
-  msgs.push({ role: 'user', content: text });
+  // Hide command hint
+  var hint = document.getElementById('commandHint');
+  if (hint) hint.classList.remove('visible');
+
+  var cmd = parseInputCommand(text);
   input.value = ''; input.style.height = 'auto';
 
-  // Auto-title: set chat title to first user message
-  const cc = getCharConvo(state.activeCharId);
-  const chat = cc.chats[state.activeChatId];
+  // Handle error
+  if (cmd.type === 'error') { showSystemEvent(cmd.message); return; }
+
+  // Handle narration /n
+  if (cmd.type === 'narration') {
+    var msgs = getActiveMessages();
+    msgs.push({ role: 'assistant', content: cmd.content, isNarration: true });
+    saveConversations(); renderMessages(); return;
+  }
+
+  // Handle +Character
+  if (cmd.type === 'addChar') { addCharacterToChat(cmd.char); return; }
+
+  // Handle -Character
+  if (cmd.type === 'removeChar') { await removeCharacterFromChatWithExit(cmd.char); return; }
+
+  // Handle @mention or regular message
+  var msgs = getActiveMessages();
+  var ch = state.characters.find(function(c) { return c.id === state.activeCharId; });
+  var forcedCharIds = null;
+
+  if (cmd.type === 'mention') {
+    forcedCharIds = cmd.mentions.map(function(m) { return m.char.id; });
+    msgs.push({ role: 'user', content: text });
+  } else {
+    msgs.push({ role: 'user', content: text });
+  }
+
+  // Auto-title
+  var cc = getCharConvo(state.activeCharId);
+  var chat = cc.chats[state.activeChatId];
   if (chat && chat.title === 'New Conversation') {
     chat.title = text.length > 35 ? text.substring(0, 35) + '...' : text;
     renderChatHistory();
@@ -1460,54 +1938,65 @@ async function sendMessage() {
 
   renderMessages(); saveConversations();
 
-  // Build system prompt: global + character + RP formatting instructions
-  const rpFormatRule = '\n\n[Formatting rules: Always wrap actions, thoughts, descriptions, and narration in *single asterisks* for italic styling. Dialogue should be in "double quotes" without asterisks. Keep dialogue as regular text. Example: *She looks up nervously* "Hello there." *her hands trembling slightly*]';
-  let sysContent = ch.prompt + rpFormatRule;
-  if (state.globalSystemPrompt) sysContent = state.globalSystemPrompt + '\n\n' + sysContent;
-
-  const apiMessages = [{ role: 'system', content: sysContent }, ...msgs.map(m => ({ role: m.role, content: m.content }))];
+  var sysContent = buildSystemPrompt({ forcedCharIds: forcedCharIds });
+  var apiMessages = [{ role: 'system', content: sysContent }].concat(buildApiMessages(msgs));
 
   state.isStreaming = true;
   document.getElementById('sendBtn').disabled = true;
   document.getElementById('typingIndicator').classList.add('active');
 
   try {
-    const resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
+    var resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
-      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, temperature: 0.85, max_tokens: 1024 })
+      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, temperature: 0.85, max_tokens: 2048 })
     });
-    if (!resp.ok) { const et = await resp.text(); throw new Error('API error ' + resp.status + ': ' + et); }
+    if (!resp.ok) { var et = await resp.text(); throw new Error('API error ' + resp.status + ': ' + et); }
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let aMsg = '', buffer = '';
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var fullResponse = '', buffer = '';
     msgs.push({ role: 'assistant', content: '' });
-    const mi = msgs.length - 1;
+    var tempIdx = msgs.length - 1;
     document.getElementById('typingIndicator').classList.remove('active');
     renderMessages();
 
     while (true) {
-      const { done, value } = await reader.read(); if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n'); buffer = lines.pop() || '';
-      for (const line of lines) {
-        const tr = line.trim();
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      var lines = buffer.split('\n'); buffer = lines.pop() || '';
+      for (var i = 0; i < lines.length; i++) {
+        var tr = lines[i].trim();
         if (!tr || !tr.startsWith('data: ')) continue;
-        const data = tr.slice(6); if (data === '[DONE]') continue;
+        var data = tr.slice(6); if (data === '[DONE]') continue;
         try {
-          const p = JSON.parse(data);
-          const delta = p.choices?.[0]?.delta?.content;
-          if (delta) { aMsg += delta; msgs[mi].content = aMsg; updateStreamingContent(aMsg); }
+          var p = JSON.parse(data);
+          var delta = p.choices && p.choices[0] && p.choices[0].delta ? p.choices[0].delta.content : null;
+          if (delta) { fullResponse += delta; msgs[tempIdx].content = fullResponse; updateStreamingContent(fullResponse); }
         } catch(e) {}
       }
     }
-    saveConversations();
+
+    // Post-stream: parse multi-character responses
+    var activeIds = getActiveCharacters();
+    if (activeIds.length > 1) {
+      var parsed = parseMultiCharResponse(fullResponse, activeIds);
+      msgs.splice(tempIdx, 1); // remove temp streaming message
+      parsed.forEach(function(block) {
+        msgs.push({ role: 'assistant', content: block.content, charId: block.charId, charName: block.charName });
+      });
+    } else {
+      msgs[tempIdx].charId = state.activeCharId;
+      msgs[tempIdx].charName = ch ? ch.name : null;
+    }
+
+    saveConversations(); renderMessages();
   } catch(err) {
     document.getElementById('typingIndicator').classList.remove('active');
-    const ms = getActiveMessages();
+    var ms = getActiveMessages();
     if (ms.length && ms[ms.length-1].role === 'assistant' && !ms[ms.length-1].content) ms.pop();
-    const ed = document.createElement('div'); ed.className = 'message assistant';
+    var ed = document.createElement('div'); ed.className = 'message assistant';
     ed.innerHTML = '<div class="sender" style="color:var(--danger)">Error</div><div class="content" style="color:var(--danger)">' + escapeHtml(err.message) + '</div>';
     document.getElementById('messages').appendChild(ed);
     scrollToBottom();
@@ -1519,13 +2008,16 @@ async function sendMessage() {
 function clearChat() {
   if (!state.activeCharId || !state.activeChatId) return;
   if (!confirm('Clear this conversation?')) return;
-  const ch = state.characters.find(c => c.id === state.activeCharId);
-  const msgs = [];
-  if (ch && ch.greeting) msgs.push({ role: 'assistant', content: ch.greeting });
+  var ch = state.characters.find(function(c) { return c.id === state.activeCharId; });
+  var msgs = [];
+  if (ch && ch.greeting) msgs.push({ role: 'assistant', content: ch.greeting, charId: ch.id, charName: ch.name });
   setActiveMessages(msgs);
-  const cc = getCharConvo(state.activeCharId);
-  if (cc.chats[state.activeChatId]) cc.chats[state.activeChatId].title = 'New Conversation';
-  saveConversations(); renderMessages(); renderChatHistory();
+  var cc = getCharConvo(state.activeCharId);
+  if (cc.chats[state.activeChatId]) {
+    cc.chats[state.activeChatId].title = 'New Conversation';
+    cc.chats[state.activeChatId].activeCharacters = [state.activeCharId];
+  }
+  saveConversations(); renderMessages(); renderChatHistory(); renderActiveCharactersBar();
 }
 
 function toggleSidebar() {
@@ -1535,7 +2027,7 @@ function toggleSidebar() {
 // ─── Auto-resize textarea ───
 document.addEventListener('DOMContentLoaded', () => {
   const ta = document.getElementById('userInput');
-  if (ta) ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150) + 'px'; });
+  if (ta) ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150) + 'px'; updateCommandHint(ta.value); });
 });
 
 // ═══════════════════════════════════════
