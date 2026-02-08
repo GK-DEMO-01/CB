@@ -578,21 +578,57 @@
     font-size: 11px; color: var(--text-muted); margin-top: 8px; font-style: italic;
   }
 
+  /* ─── Generation Preset Selector ─── */
+  .preset-selector {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .preset-option {
+    flex: 1; min-width: 90px; padding: 12px 10px; border-radius: 10px;
+    border: 2px solid var(--border); background: var(--bg-tertiary);
+    cursor: pointer; text-align: center; transition: border-color 0.2s, background 0.2s;
+    -webkit-tap-highlight-color: transparent; min-height: 48px;
+  }
+  .preset-option:active { transform: scale(0.97); }
+  .preset-option.selected {
+    border-color: var(--accent); background: rgba(124,92,255,0.1);
+  }
+  .preset-option-title {
+    font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;
+  }
+  .preset-option-desc {
+    font-size: 11px; color: var(--text-muted); line-height: 1.3;
+  }
+
   /* ─── Command Hint Popup ─── */
   .command-hint {
     position: absolute; bottom: 100%; left: 0; right: 0;
     background: var(--bg-secondary); border: 1px solid var(--border);
-    border-radius: 8px; padding: 6px; margin-bottom: 4px;
+    border-radius: 10px; padding: 6px; margin-bottom: 4px;
     font-size: 13px; color: var(--text-secondary);
-    display: none; z-index: 10; max-height: 200px; overflow-y: auto;
+    display: none; z-index: 10; max-height: 240px; overflow-y: auto;
+    overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.25);
   }
   .command-hint.visible { display: block; }
   .command-hint-item {
-    padding: 8px 10px; border-radius: 6px; cursor: pointer;
-    display: flex; align-items: center; gap: 8px;
-    -webkit-tap-highlight-color: transparent;
+    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    -webkit-tap-highlight-color: transparent; min-height: 44px;
   }
-  .command-hint-item:hover, .command-hint-item:active { background: var(--bg-tertiary); }
+  .command-hint-item:active { background: var(--bg-tertiary); }
+  @media (hover: hover) { .command-hint-item:hover { background: var(--bg-tertiary); } }
+  .command-hint-cmd {
+    font-family: 'SF Mono', 'Menlo', monospace; font-size: 13px; font-weight: 600;
+    color: var(--accent); background: rgba(124,92,255,0.12); padding: 2px 7px;
+    border-radius: 5px; white-space: nowrap; flex-shrink: 0;
+  }
+  .command-hint-desc {
+    font-size: 12px; color: var(--text-muted); line-height: 1.3;
+  }
+  .command-hint-empty {
+    padding: 10px 12px; font-size: 12px; color: var(--text-muted); text-align: center;
+    font-style: italic;
+  }
 
   /* ─── Responsive ─── */
   @media (max-width: 768px) {
@@ -689,7 +725,7 @@
       <div class="input-area" style="position:relative;">
         <div class="command-hint" id="commandHint"></div>
         <div class="input-wrapper">
-          <textarea id="userInput" placeholder="Type your message... (+add, -remove, @mention, /n narrate, /n /u context)" rows="1" onkeydown="handleInputKey(event)"></textarea>
+          <textarea id="userInput" placeholder="Type / for commands, or just chat..." rows="1" onkeydown="handleInputKey(event)"></textarea>
           <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#9654;</button>
         </div>
       </div>
@@ -784,6 +820,25 @@
       <label>Global System Prompt</label>
       <textarea id="globalPromptInput" rows="5" placeholder="e.g. Keep responses under 200 words. Always respond in English. Use vivid descriptions..."></textarea>
       <p class="form-hint">This prompt is prepended to ALL character conversations. Use it for global rules like response length, language, or formatting preferences.</p>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;">
+    <div class="form-group">
+      <label>Response Style</label>
+      <p class="form-hint" style="margin-bottom:10px;">Controls how creative or focused the AI responses are.</p>
+      <div class="preset-selector" id="presetSelector">
+        <div class="preset-option" data-preset="low" onclick="selectPreset('low')">
+          <div class="preset-option-title">Precise</div>
+          <div class="preset-option-desc">Focused, consistent, stays on-topic</div>
+        </div>
+        <div class="preset-option selected" data-preset="mid" onclick="selectPreset('mid')">
+          <div class="preset-option-title">Balanced</div>
+          <div class="preset-option-desc">Natural variety with coherence</div>
+        </div>
+        <div class="preset-option" data-preset="high" onclick="selectPreset('high')">
+          <div class="preset-option-title">Creative</div>
+          <div class="preset-option-desc">Imaginative, varied, expressive</div>
+        </div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeSettingsModal()">Cancel</button>
@@ -905,7 +960,8 @@ let state = {
   globalSystemPrompt: '',
   isStreaming: false,
   editingMsgIndex: null,
-  userCharacter: { name: '', description: '' }
+  userCharacter: { name: '', description: '' },
+  generationPreset: 'mid'
 };
 
 // ═══════════════════════════════════════
@@ -1035,11 +1091,30 @@ function loadData() {
   // User character
   const uc = localStorage.getItem('rpchat_user_character');
   state.userCharacter = uc ? JSON.parse(uc) : { name: '', description: '' };
+
+  // Generation preset
+  const gp = localStorage.getItem('rpchat_generation_preset');
+  state.generationPreset = (gp && ['low','mid','high'].includes(gp)) ? gp : 'mid';
 }
 
 function saveCharacters() { localStorage.setItem('rpchat_characters', JSON.stringify(state.characters)); }
 function saveConversations() { localStorage.setItem('rpchat_conversations', JSON.stringify(state.conversations)); }
 function saveUserCharacter() { localStorage.setItem('rpchat_user_character', JSON.stringify(state.userCharacter)); }
+
+function getGenerationParams() {
+  const presets = {
+    low:  { temperature: 0.4, top_p: 0.9, frequency_penalty: 0.0 },
+    mid:  { temperature: 0.75, top_p: 0.95, frequency_penalty: 0.1 },
+    high: { temperature: 1.0, top_p: 1.0, frequency_penalty: 0.3 }
+  };
+  return presets[state.generationPreset] || presets.mid;
+}
+
+function selectPreset(value) {
+  document.querySelectorAll('#presetSelector .preset-option').forEach(function(el) {
+    el.classList.toggle('selected', el.dataset.preset === value);
+  });
+}
 
 // ─── Conversation helpers ───
 function getCharConvo(charId) {
@@ -1329,7 +1404,7 @@ async function regenerateFrom() {
     var resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
-      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, temperature: 0.85, max_tokens: 2048 })
+      body: JSON.stringify(Object.assign({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, max_tokens: 2048 }, getGenerationParams()))
     });
     if (!resp.ok) { var et = await resp.text(); throw new Error('API error ' + resp.status + ': ' + et); }
 
@@ -1641,12 +1716,20 @@ function openSettingsModal() {
   document.getElementById('globalPromptInput').value = state.globalSystemPrompt;
   document.getElementById('userCharNameInput').value = state.userCharacter.name;
   document.getElementById('userCharDescInput').value = state.userCharacter.description;
+  // Set preset selector
+  document.querySelectorAll('#presetSelector .preset-option').forEach(function(el) {
+    el.classList.toggle('selected', el.dataset.preset === state.generationPreset);
+  });
   document.getElementById('settingsModal').classList.add('active');
 }
 function closeSettingsModal() { document.getElementById('settingsModal').classList.remove('active'); }
 function saveSettings() {
   state.globalSystemPrompt = document.getElementById('globalPromptInput').value.trim();
   localStorage.setItem('rpchat_global_prompt', state.globalSystemPrompt);
+  // Save generation preset
+  var selectedPreset = document.querySelector('#presetSelector .preset-option.selected');
+  state.generationPreset = selectedPreset ? selectedPreset.dataset.preset : 'mid';
+  localStorage.setItem('rpchat_generation_preset', state.generationPreset);
   state.userCharacter.name = document.getElementById('userCharNameInput').value.trim();
   state.userCharacter.description = document.getElementById('userCharDescInput').value.trim();
   saveUserCharacter();
@@ -1941,7 +2024,7 @@ async function removeCharacterFromChatWithExit(char) {
     var resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
-      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMsgs, stream: false, temperature: 0.85, max_tokens: 512 })
+      body: JSON.stringify(Object.assign({ model: document.getElementById('modelSelect').value, messages: apiMsgs, stream: false, max_tokens: 512 }, getGenerationParams()))
     });
     if (!resp.ok) throw new Error('API error ' + resp.status);
     var d = await resp.json();
@@ -1966,27 +2049,96 @@ function updateCommandHint(text) {
   var hint = document.getElementById('commandHint');
   if (!hint) return;
   var trimmed = text.trim();
+
+  // "/" or partial "/" command — show command menu
+  if (trimmed === '/' || (trimmed.startsWith('/') && !trimmed.startsWith('/n'))) {
+    hint.innerHTML =
+      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'/n\')">' +
+        '<span class="command-hint-cmd">/n</span><span class="command-hint-desc">Narrate an action or scene</span></div>' +
+      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'/n /u\')">' +
+        '<span class="command-hint-cmd">/n /u</span><span class="command-hint-desc">Load context from a previous chat</span></div>' +
+      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'+\')">' +
+        '<span class="command-hint-cmd">+</span><span class="command-hint-desc">Add a character to this chat</span></div>' +
+      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'-\')">' +
+        '<span class="command-hint-cmd">\u2212</span><span class="command-hint-desc">Remove a character from this chat</span></div>' +
+      '<div class="command-hint-item" onclick="applyCommandHint(\'command\',\'@\')">' +
+        '<span class="command-hint-cmd">@</span><span class="command-hint-desc">Direct a specific character to respond</span></div>';
+    hint.classList.add('visible');
+    return;
+  }
+
+  // Character list modes: +, -, @
   var prefix = null, partial = '';
-  if (/^\+\S*$/.test(trimmed) && trimmed.length > 1) { prefix = '+'; partial = trimmed.slice(1); }
-  else if (/^-\S*$/.test(trimmed) && trimmed.length > 1) { prefix = '-'; partial = trimmed.slice(1); }
-  else if (/^@\S*$/.test(trimmed) && trimmed.length > 1) { prefix = '@'; partial = trimmed.slice(1); }
-  if (!prefix || !partial) { hint.classList.remove('visible'); hint.innerHTML = ''; return; }
-  var lower = partial.toLowerCase();
-  var matches = state.characters.filter(function(c) {
-    return c.name.toLowerCase().startsWith(lower) || c.name.toLowerCase().includes(lower);
-  }).slice(0, 5);
-  if (matches.length === 0) { hint.classList.remove('visible'); hint.innerHTML = ''; return; }
-  hint.innerHTML = matches.map(function(ch) {
+  if (/^\+/.test(trimmed)) { prefix = '+'; partial = trimmed.slice(1).trim(); }
+  else if (/^-/.test(trimmed)) { prefix = '-'; partial = trimmed.slice(1).trim(); }
+  else if (/^@/.test(trimmed)) { prefix = '@'; partial = trimmed.slice(1).trim(); }
+
+  if (!prefix) { hint.classList.remove('visible'); hint.innerHTML = ''; return; }
+
+  var activeCharIds = getActiveCharacters();
+  var candidates = [];
+
+  if (prefix === '+') {
+    // Show only characters NOT in the chat
+    candidates = state.characters.filter(function(c) {
+      return activeCharIds.indexOf(c.id) === -1;
+    });
+  } else if (prefix === '-') {
+    // Show only characters IN the chat, excluding primary
+    candidates = state.characters.filter(function(c) {
+      return c.id !== state.activeCharId && activeCharIds.indexOf(c.id) !== -1;
+    });
+  } else if (prefix === '@') {
+    // Show only characters IN the chat
+    candidates = state.characters.filter(function(c) {
+      return activeCharIds.indexOf(c.id) !== -1;
+    });
+  }
+
+  // Apply fuzzy filter if partial name typed
+  if (partial) {
+    var lower = partial.toLowerCase();
+    candidates = candidates.filter(function(c) {
+      return c.name.toLowerCase().startsWith(lower) || c.name.toLowerCase().includes(lower);
+    });
+  }
+
+  candidates = candidates.slice(0, 8);
+
+  if (candidates.length === 0) {
+    var emptyMsg = prefix === '+' ? 'No more characters to add' :
+                   prefix === '-' ? 'No characters to remove' :
+                   'No matching characters';
+    hint.innerHTML = '<div class="command-hint-empty">' + emptyMsg + '</div>';
+    hint.classList.add('visible');
+    return;
+  }
+
+  hint.innerHTML = candidates.map(function(ch) {
     var avatarHtml = ch.avatarImage
-      ? '<img src="'+ch.avatarImage+'" style="width:20px;height:20px;border-radius:50%;object-fit:cover;" alt="">'
-      : '<span style="color:'+ch.color+'">'+ch.emoji+'</span>';
-    return '<div class="command-hint-item" onclick="applyCommandHint(\''+prefix+'\',\''+ch.name.replace(/'/g, "\\'")+'\')">' +
+      ? '<img src="'+ch.avatarImage+'" style="width:24px;height:24px;border-radius:50%;object-fit:cover;" alt="">'
+      : '<span style="font-size:18px;color:'+ch.color+'">'+ch.emoji+'</span>';
+    var safeName = ch.name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    return '<div class="command-hint-item" onclick="applyCharHint(\''+prefix+'\',\''+safeName+'\')">' +
       avatarHtml + '<span>' + escapeHtml(ch.name) + '</span></div>';
   }).join('');
   hint.classList.add('visible');
 }
 
-function applyCommandHint(prefix, charName) {
+function applyCommandHint(type, value) {
+  var input = document.getElementById('userInput');
+  var hint = document.getElementById('commandHint');
+  if (value === '/n') { input.value = '/n '; hint.classList.remove('visible'); }
+  else if (value === '/n /u') { input.value = '/n /u "'; hint.classList.remove('visible'); }
+  else {
+    // +, -, @ — set prefix and show character list
+    input.value = value;
+    updateCommandHint(value);
+  }
+  input.focus();
+}
+
+function applyCharHint(prefix, charName) {
   var input = document.getElementById('userInput');
   if (prefix === '@') { input.value = '@' + charName + ' '; }
   else { input.value = prefix + charName; }
@@ -2075,7 +2227,7 @@ async function sendMessage() {
     var resp = await fetch(OPENROUTER_API_BASE + '/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + state.apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': CALLBACK_URL, 'X-Title': APP_NAME },
-      body: JSON.stringify({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, temperature: 0.85, max_tokens: 2048 })
+      body: JSON.stringify(Object.assign({ model: document.getElementById('modelSelect').value, messages: apiMessages, stream: true, max_tokens: 2048 }, getGenerationParams()))
     });
     if (!resp.ok) { var et = await resp.text(); throw new Error('API error ' + resp.status + ': ' + et); }
 
